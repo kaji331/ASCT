@@ -1,43 +1,38 @@
 mutable struct HarmonyObj
-    ρ
-    z_orig::Matrix{Float32}
-    z_corr::Matrix{Float32}
-    z_cos::Matrix{Float32}
-    γ
-    ϕ
-    ϕ_moe
-    batches_ratio
-    θ::Vector{Int32}
-    batches_number
-    σ::Float32
-    λ::Vector{Int32}
-    obj_harmony
-    obj_kmeans
-    obj_kmeans_dist
-    obj_kmeans_entropy
-    obj_kmeans_cross
-    kmeans_rounds
-    block_size::Float32
-    ϵ_kmeans
-    ϵ_harmony
-    merge_thresh_global
-    num
-    nclust
-    β
-    cells_number
-    max_iter_kmeans
-    win_size
-    scale_dist
-    dist_mat
-    Ω
-    Ε
-    dir_prior
-    ϕ_rk
-    update_order
-    cells_update
-    ω
-    ran_setup
-    ran_init
+    ρ::AbstractMatrix
+    z_orig::AbstractMatrix
+    z_corr::AbstractMatrix
+    z_cos::AbstractMatrix
+    γ::AbstractMatrix
+    ϕ::AbstractMatrix
+    ϕ_moe::AbstractMatrix
+    batches_ratio::AbstractVector
+    θ::AbstractVector
+    batches_number::AbstractVector
+    σ::AbstractVector
+    λ::Diagonal
+    obj_harmony::AbstractVector
+    obj_kmeans::AbstractVector
+    obj_kmeans_dist::AbstractVector
+    obj_kmeans_entropy::AbstractVector
+    obj_kmeans_cross::AbstractVector
+    kmeans_rounds::AbstractVector
+    block_size::AbstractFloat
+    ϵ_kmeans::AbstractFloat
+    ϵ_harmony::AbstractFloat
+    nclust::Integer
+    β::Integer
+    cells_number::Integer
+    max_iter_kmeans::Integer
+    win_size::Integer
+    scale_dist::AbstractMatrix
+    dist_mat::AbstractMatrix
+    Ω::AbstractMatrix
+    Ε::AbstractMatrix
+    ϕ_rk::AbstractMatrix
+    ω::AbstractMatrix
+    ran_setup::Bool
+    ran_init::Bool
 end
 
 function Harmony!(objs::Union{WsObj,Vector{WsObj}};
@@ -48,7 +43,7 @@ function Harmony!(objs::Union{WsObj,Vector{WsObj}};
         hvg_method::Symbol = :simple,
         max_pca::Integer = 50,
         pca_method::AbstractString = "PCA",
-        pca_number::Union{Symbol,Integer} = :auto,
+        use_pc::Union{Symbol,Integer} = :auto,
         min_features::Union{Nothing,Integer} = nothing,
         min_cells::Union{Nothing,Integer} = nothing)
 
@@ -154,40 +149,39 @@ function Harmony!(objs::Union{WsObj,Vector{WsObj}};
     SelectHVG!(obj;hvg_number=hvg_number,method=hvg_method)
     # PCA, choose PCs automatically
     @info "Doing PCA..."
-    PCA!(obj;max_pc=max_pca,method=pca_method,cut=pca_number)
+    PCA!(obj;max_pc=max_pca,method=pca_method,cut=use_pc)
 
     # Harmony matrix
     @info "Doing Harmony..."
-    hm = HarmonyMatrix(obj.meta["pca"][:,1:obj.meta["pca_cut"]],grp,names(grp);
-                       ref_batches=ref_batches)
+    hm = HarmonyMatrix(obj.meta["pca"][:,1:obj.meta["pca_cut"]]',grp,names(grp);
+                       ref_batches=ref_batches)'
 
     # Modify WsObj
     if !isnothing(hm)
-        obj.meta["harmony"] = hm'
+        obj.meta["harmony"] = hm
     else
         @warn "No harmony result: clustering error!"
-        if mark == 0
-            return obj
-        end
+    end
+
+    if mark == 0
+        return obj
     end
 end
 
-function HarmonyMatrix(em::Matrix{Float32},
+function HarmonyMatrix(em::AbstractMatrix,
         grp::DataFrame,
         grp_names::Vector{String};
-        σ::Float32 = 0.1,
-        block_size::Float32 = 0.05,
-        max_iter_harmony::Int32 = 10,
-        max_iter_cluster::Int32 = 20,
-        ϵ_cluster::Float32 = 1e-5,
-        ϵ_harmony::Float32 = 1e-4,
+        σ::AbstractFloat = 0.1,
+        block_size::AbstractFloat = 0.05,
+        max_iter_harmony::Integer = 10,
+        max_iter_cluster::Integer = 20,
+        ϵ_cluster::AbstractFloat = 1e-5,
+        ϵ_harmony::AbstractFloat = 1e-4,
         ref_batches::Union{Nothing,String,Vector{String}} = nothing)
 
-    em = em'
     # Now the row is PCs, and the column is Cells...
-    pc_num = size(em,1)
+    pc_num,cells_number = size(em)
     groups = grp_names
-    cells_number = size(em,2)
     nclust = minimum([round(Int,cells_number / 30),100])
     θ = repeat([2];inner=length(groups))
     λ = repeat([1];inner=length(groups))
@@ -198,6 +192,8 @@ function HarmonyMatrix(em::Matrix{Float32},
     # One-hot
     # https://discourse.julialang.org/t/all-the-ways-to-do-one-hot-encoding/64807
     ϕ = vcat([ unique(grp[:,g]) .== permutedims(grp[:,g]) for g in groups ]...)
+    # model = ConstantTerm(1) ~ sum(term.(groups))
+    # ϕ = modelmatrix(model,grp) |> x -> hcat(Int.(x) .⊻ 1,Int.(x))'
 
     # Max of Int32 is 2147483647.
     batches_number = ϕ * ones(Int32,size(ϕ,2))
@@ -225,9 +221,12 @@ function HarmonyMatrix(em::Matrix{Float32},
     end
 
     # Run
+    # In Armadillo, % means .*, as_scalar just makes 1 element vector to scalar, 
+    # mean/sum have dimension option, accu equals to sum, repmat means 
+    # repeat with outer option
     z_cos = copy(em)
     CosNormal!(z_cos,0,true)
-    num = size(em,2)
+    # num = size(em,2)
     β = size(ϕ,1)
     Random.seed!(1984)
     γ = kmeans(z_cos,nclust;maxiter=25).centers
@@ -265,9 +264,9 @@ function HarmonyMatrix(em::Matrix{Float32},
     ho = HarmonyObj(ρ,em,copy(em),z_cos,γ,ϕ,ϕ_moe,batches_ratio,θ,
                     batches_number,σ,λ_mat,obj_harmony,obj_kmeans,
                     obj_kmeans_dist,obj_kmeans_entropy,obj_kmeans_cross,Int[],
-                    block_size,ϵ_cluster,ϵ_harmony,nothing,num,nclust,β,
-                    cells_number,max_iter_cluster,3,zeros(nclust,num),dist_mat,
-                    Ω,Ε,nothing,zeros(β + 1,num),nothing,nothing,
+                    block_size,ϵ_cluster,ϵ_harmony,nclust,β,
+                    cells_number,max_iter_cluster,3,zeros(nclust,cells_number),
+                    dist_mat,Ω,Ε,zeros(β + 1,cells_number),
                     zeros(β + 1,cells_number),true,true)
 
     if Harmonize!(ho,max_iter_harmony) == 2
@@ -330,7 +329,7 @@ end
 
 function UpdateΡ!(ho::HarmonyObj)
     Random.seed!(1984)
-    ho.update_order = shuffle(1:ho.num)
+    update_order = shuffle(1:ho.cells_number)
     scale_dist = -ho.dist_mat
     scale_dist ./= ho.σ
     col_max = [ maximum(col) for col in eachcol(scale_dist) ]
@@ -342,10 +341,10 @@ function UpdateΡ!(ho::HarmonyObj)
 
     # Online updates
     n_blocks = Int(ceil(1 / ho.block_size))
-    cells_per_block = trunc(Int,ho.num / n_blocks)
+    cells_per_block = trunc(Int,ho.cells_number / n_blocks)
     # Gather cell updates indices
     idx_min = [ i * cells_per_block for i in 1:n_blocks ]
-    idx_max = [ minimum([tmp + cells_per_block,ho.num]) for tmp in idx_min ]
+    idx_max = [ minimum([tmp + cells_per_block,ho.cells_number]) for tmp in idx_min ]
     if any(idx_min .> idx_max)
         pos = findfirst(idx_min .> idx_max) - 1
     else
@@ -354,7 +353,7 @@ function UpdateΡ!(ho::HarmonyObj)
     @inbounds for i in 1:pos
         idx_list = Int.(trunc.(range(idx_min[i],idx_max[i];
                                      length=idx_max[i] - idx_min[i])))
-        cells_update = ho.update_order[idx_list]
+        cells_update = update_order[idx_list]
 
         # Step1. remove cells
         ho.Ε .-= ho.ρ[:,cells_update] * ones(Int32,length(cells_update)) * 

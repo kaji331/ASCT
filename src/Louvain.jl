@@ -54,6 +54,26 @@ function NetWork(nodes_number::Integer,
     NetWork(nodes_number,Float32[],first_neighbor_ind,neighbor,edge_weights)
 end
 
+function TotalEdgeWeights(network::NetWork)
+    sum(network.edge_weights) / 2
+end
+
+function TotalEdgeWeights(network::NetWork,
+        node::Integer)
+    idx1 = network.first_neighbor_ind[node]
+    idx2 = network.first_neighbor_ind[node + 1]
+    s = sum(network.edge_weights[idx1:(idx2 - 1)])
+    return s
+end
+
+function TotalEdgeWeightsPerNode(network::NetWork)
+    total_edge_weights_per_node = zeros(Float32,network.nodes_number)
+    @inbounds for i in 1:network.nodes_number
+        total_edge_weights_per_node[i] = TotalEdgeWeights(network,i)
+    end
+    return total_edge_weights_per_node
+end
+
 @inline function ReducedNet(network::NetWork,
         clustering::MClustering)
     edges_number = 0
