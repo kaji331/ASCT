@@ -27,3 +27,7 @@ saves all transformed data, meta information and operation logs.
 10. Harmony.jl: Reimplementation of harmony algorithm for data integration. 
 
 ## Tutorials
+
+pbmc3k: [jupyter](doc/pbmc3k.ipynb)
+neuron9k: [jupyter](doc/neuron9k.ipynb)
+harmony algorithm: [jupyter](doc/Harmony.ipynb)
