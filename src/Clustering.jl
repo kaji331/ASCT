@@ -183,6 +183,7 @@ function KClustering!(obj::WsObj;
         cell_assignments = clustering_vector[K - 1].assignments
     end
 
+    SortAssignments!(cell_assignments)
     # Output
     obj.meta["clusters_" * dist_method * "_" * string(K)] = cell_assignments
     obj.meta["clusters_latest"] = cell_assignments
@@ -238,8 +239,7 @@ function ModularityClustering!(obj::WsObj;
         # i = vcat(res...)
         # knn_matrix = sparse((eachindex(i) . - 1) .÷ K .+ 1,i,1)
 
-        # Adjacent matrix, but slower! Should be rewritten to sparse matrix 
-        # directly in future!
+        # Adjacent matrix, but slower!
         # Clustering result may be better!
         g = SimpleWeightedGraph(size(d,1))
         @inbounds for v in vertices(g)
@@ -317,7 +317,22 @@ function ModularityClustering!(obj::WsObj;
                             clustering_vector[pos][2])
     end
 
+    SortAssignments!(cell_assignments[2])
     # Output
     obj.meta["clusters_MC_" * string(cell_assignments[1])] = cell_assignments[2]
     obj.meta["clusters_latest"] = cell_assignments[2]
+end
+
+function SortAssignments!(ca::AbstractVector)
+    x = Int[]
+    m = countmap(ca)
+    for i in 2:length(m)
+        mm = findmax(m)[2]
+        push!(x,mm)
+        pop!(m,mm)
+    end
+    idx = [ ca .== v for v in x ]
+    for (i,id) in enumerate(idx)
+        ca[id] .= i
+    end
 end

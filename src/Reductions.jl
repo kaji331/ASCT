@@ -39,7 +39,7 @@ function PCA!(obj::WsObj;
     end
     if method == "PCA"
         M = MultivariateStats.fit(PCA,dat;maxoutdim=max_pc)
-        Y = MultivariateStats.transform(M,dat)'
+        Y = MultivariateStats.transform(M,dat)' |> Matrix
         pv = principalvars(M)
         cumulative_var = log10.(pv .^ 2 / sum(pv .^ 2))
     elseif method == "Arpack"
@@ -78,7 +78,8 @@ function PCA!(obj::WsObj;
     obj.meta["pca_cut"] = cut
 
     # log
-    push!(obj.log,String("PCA!(WsObj;max_pc=$max_pc,use_hvg=$use_hvg,ptr=$ptr"))
+    push!(obj.log,String("PCA!(WsObj;max_pc=$max_pc,use_hvg=$use_hvg," * 
+                         "method=$method,seed=$seed,cut=$cut,ptr=$ptr)"))
 
     return "Finished!"
 end
@@ -136,7 +137,7 @@ function RunUMAP!(obj::WsObj;
              set_operation_ratio = set_operation_ratio,
              local_connectivity = local_connectivity,
              repulsion_strength = repulsion_strength,
-             neg_sample_rate = neg_sample_rate)'
+             neg_sample_rate = neg_sample_rate)' |> Matrix
 
     # Update WsObj
     obj.meta["umap"] = y
@@ -494,14 +495,14 @@ function RunTSNE!(obj::WsObj;
 
     # Update WsObj
     if extended_output
-        obj.meta["tsne"] = y[1]
+        obj.meta["tsne"] = y[1] |> Matrix
         if fast
             obj.meta["tsne_loss"] = y[2]
         else
             obj.meta["tsne_point_perplexity"] = y[2]
         end
     else
-        obj.meta["tsne"] = y
+        obj.meta["tsne"] = y |> Matrix
     end
     
     # log
@@ -579,7 +580,7 @@ function FastRowScale!(obj::WsObj;
     obj.dat["scale_dat"] = mat
     # log
     push!(obj.log,String("FastRowScale!(WsObj;center=$center,scale=$scale" * 
-                         "scale_max=$scale_max,ptr=$ptr"))
+                         "scale_max=$scale_max,ptr=$ptr)"))
 
     return "Finished!"
 end

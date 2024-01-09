@@ -226,7 +226,6 @@ function HarmonyMatrix(em::AbstractMatrix,
     # repeat with outer option
     z_cos = copy(em)
     CosNormal!(z_cos,0,true)
-    # num = size(em,2)
     β = size(ϕ,1)
     Random.seed!(1984)
     γ = kmeans(z_cos,nclust;maxiter=25).centers
@@ -264,10 +263,10 @@ function HarmonyMatrix(em::AbstractMatrix,
     ho = HarmonyObj(ρ,em,copy(em),z_cos,γ,ϕ,ϕ_moe,batches_ratio,θ,
                     batches_number,σ,λ_mat,obj_harmony,obj_kmeans,
                     obj_kmeans_dist,obj_kmeans_entropy,obj_kmeans_cross,Int[],
-                    block_size,ϵ_cluster,ϵ_harmony,nclust,β,
-                    cells_number,max_iter_cluster,3,zeros(nclust,cells_number),
-                    dist_mat,Ω,Ε,zeros(β + 1,cells_number),
-                    zeros(β + 1,cells_number),true,true)
+                    block_size,ϵ_cluster,ϵ_harmony,nclust,β,cells_number,
+                    max_iter_cluster,3,zeros(nclust,cells_number),dist_mat,Ω,Ε,
+                    zeros(β + 1,cells_number),zeros(β + 1,cells_number),true,
+                    true)
 
     if Harmonize!(ho,max_iter_harmony) == 2
         return nothing
@@ -482,18 +481,15 @@ function Harmonize!(ho::HarmonyObj,
     @inbounds for i in 1:iter_num
         @info "Harmonizing $i times..."
         # Step1. clustering
-        @info "Clustering..."
         err_status = Cluster!(ho)
         if err_status
             return 2
         end
 
         # Step2. regressing out covariates
-        @info "Doing MoeCorrectRidge..."
         MoeCorrectRidge!(ho)
 
         # Step3. check for convergence
-        @info "Checking convergence..."
         if CheckConvergence(ho,1)
             return 1
         end

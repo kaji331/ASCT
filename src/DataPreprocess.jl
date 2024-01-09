@@ -28,7 +28,7 @@ function SelectHVG!(obj::WsObj;
     dat = obj.dat[ptr * "_dat"]' |> sparse
     clip_max = sqrt(dat.m)
     # 'mean' is faster for columns, slower for rows to matrix multiplication
-    avg = mean(dat;dims=1)' 
+    avg = mean(dat;dims=1)' |> vec |> Vector
     variances = var(dat;dims=1)' |> vec |> Vector
     variances_exp = zeros(Float32,dat.n)
     variances_std = zeros(Float32,dat.n)
@@ -63,6 +63,10 @@ function SelectHVG!(obj::WsObj;
             cutoff = FindCutoff2(avg,variances_std;method=method)
         end
         idx = findall(x -> x > cutoff,variances_std)
+        idx = sortperm(variances_std[idx];rev=true) |> invperm |> x -> idx[x]
+        idx = length(idx) > 5000 ? 
+            idx[1:5000] : 
+            length(idx) < 500 ? idx[1:500] : idx
     elseif typeof(hvg_number) <: Integer
         idx = findall(x -> x <= hvg_number,
                       sortperm(variances_std;rev=true) |> invperm)
@@ -109,7 +113,7 @@ function RegressObs!(obj::WsObj;
     end
 
     if !@isdefined(latent_data)
-        throw(DomainError(var,"No var found in WsObj!"))
+        return "Nothing to do! No var found in WsObj!"
     else
         model = term("y") ~ sum(term.(names(latent_data)))
     end
@@ -131,7 +135,7 @@ function RegressObs!(obj::WsObj;
     obj.dat["regress_dat"] = log1p.(hcat(resid...)') |> sparse
 
     # log
-    push!(obj.log,String("RegressMeta!(WsObj;var=$var,use_hvg=$use_hvg," * 
+    push!(obj.log,String("RegressObs!(WsObj;var=$var,use_hvg=$use_hvg," * 
                          "ptr=$ptr)"))
 
     return "Finished!"
@@ -233,7 +237,7 @@ function FeatureScore!(obj::WsObj;
 
     # log
     push!(obj.log,String("FeatureScore!(WsObj;features=$features," * 
-                         "meta_name=$meta_name,ptr=$ptr)"))
+                         "meta_name=$meta_name,seed=$seed,ptr=$ptr)"))
 
     return "Finished!"
 end

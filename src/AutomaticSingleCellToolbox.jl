@@ -12,10 +12,11 @@ module AutomaticSingleCellToolbox
     export MergeRawData
     export FeaturePercentage!,ManualFilter!,AutoFilter!,QcPlot
     export NormalizeData!,SelectHVG!,RegressObs!,FeatureScore!
-    export PCA!,RunTSNE!,RunUMAP!
+    export PCA!,RunTSNE!,RunUMAP!,FastRowScale!
     export Clustering!
     export DE!
     export Harmony!
+    export SaveSeuratV4
 
     if Threads.nthreads() != 1
         throw(ArgumentError("Only support one thread!"))
