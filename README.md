@@ -16,18 +16,18 @@ UMI data as sparse array and barcodes/features as DataFrame. The struct also
 saves all transformed data, meta information and operation logs.
 
 1. AutomaticSingleCellToolbox.jl: Module entrance.
-2. DataObject.jl: Definition the single-cell data struct.
-3. DataFetch.jl: Definition the functions for single-cell data reading.
-4. QualityCheck.jl: Definition the functions of QC filtering and visualization.
-5. DataPreprocess.jl: Definition the functions of data preprocessing.
-6. Reductions.jl: Definition the functions of PCA, tSNE, UMAP etc.
-7. Clustering.jl/ModularityClustering.jl/SNN.jl/Louvain.jl: Definition the function for clustering.
-8. DE.jl: Definition the functions for marker genes identification.
-9. DataManipulation.jl: Definition the function for data manipulation.
+2. DataObject.jl: Definition of the single-cell data struct.
+3. DataFetch.jl: Definition of the functions for single-cell data reading.
+4. QualityCheck.jl: Definition of the functions of QC filtering and visualization.
+5. DataPreprocess.jl: Definition of the functions of data preprocessing.
+6. Reductions.jl: Definition of the functions of PCA, tSNE, UMAP etc.
+7. Clustering.jl/ModularityClustering.jl/SNN.jl/Louvain.jl: Definition of the functions for clustering.
+8. DE.jl: Definition of the functions for marker genes identification.
+9. DataManipulation.jl: Definition of the functions for data manipulation.
 10. Harmony.jl: Reimplementation of harmony algorithm for data integration. 
 
 ## Tutorials
 
-pbmc3k: [jupyter](doc/pbmc3k.ipynb)
-neuron9k: [jupyter](doc/neuron9k.ipynb)
-harmony algorithm: [jupyter](doc/Harmony.ipynb)
+- pbmc3k: [jupyter](doc/pbmc3k.ipynb)
+- neuron9k: [jupyter](doc/neuron9k.ipynb)
+- harmony algorithm: [jupyter](doc/Harmony.ipynb)
