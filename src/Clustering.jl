@@ -1,5 +1,34 @@
 # We provide graph-based and kmedoids methods for clustering.
 
+"""
+    Clustering!(obj)
+
+Cluster cells by reduction matrix.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `method::AbstractString = "mc"`: currently only "mc" or "kmedoids" supported.
+- `reduction::Union{AbstractString,Symbol} = :auto`: :auto or give the name of 
+  reduction for clustering calculation.
+- `use_pc::Union{AbstractString,Integer} = "pca_cut"`: define the name of pc 
+  threshold in WsObj or the number of top PCs.
+- `tree_K::Integer = 20`: number of nearest neighbors for "mc" method.
+- `resolution::Union{Symbol,Real,AbstractRange}= :auto`: resolution for "mc" 
+  method. :auto will try to find a resolution based the clustree thoughts, a 
+  number will define the specific resolution and a range will make a iteration 
+  of resolution in the range.
+- `cluster_K::Union{Nothing,Integer} = nothing`: define a specific K for 
+  "kmedoids" method.
+- `cluster_K_max::Union{Nothing,Integer} = 30`: if cluster\\_K is nothing, the 
+  function will run from 2 to cluster\\_K\\_max.
+- `dist::AbstractString = "Euclidean"`: distance algorithm for "kmedoids".
+- `network::AbstractString = "SNN"`: use "SNN" or "KNN" for "mc" method.
+- `random_starts_number::Integer = 10`: start points number of "mc" method.
+- `iter_number::Integer = 10`: iteration number of "mc" method.
+- `seed::Integer = -1`: random seed.
+"""
 function Clustering!(obj::WsObj;
         method::AbstractString = "mc",
         reduction::Union{AbstractString,Symbol} = :auto,
@@ -185,8 +214,8 @@ function KClustering!(obj::WsObj;
 
     SortAssignments!(cell_assignments)
     # Output
-    obj.meta["clusters_" * dist_method * "_" * string(K)] = cell_assignments
-    obj.meta["clusters_latest"] = cell_assignments
+    obj.obs[!,"clusters_" * dist_method * "_" * string(K)] = cell_assignments
+    obj.obs.clusters_latest = cell_assignments
 end
 
 function ModularityClustering!(obj::WsObj;
@@ -319,8 +348,9 @@ function ModularityClustering!(obj::WsObj;
 
     SortAssignments!(cell_assignments[2])
     # Output
-    obj.meta["clusters_MC_" * string(cell_assignments[1])] = cell_assignments[2]
-    obj.meta["clusters_latest"] = cell_assignments[2]
+    obj.obs[!,"clusters_MC_" * string(cell_assignments[1])] = 
+        cell_assignments[2]
+    obj.obs.clusters_latest = cell_assignments[2]
 end
 
 function SortAssignments!(ca::AbstractVector)

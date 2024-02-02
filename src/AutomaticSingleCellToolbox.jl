@@ -1,22 +1,24 @@
 module AutomaticSingleCellToolbox
 
     using Arpack,TSVD
-    using MultivariateStats,HDF5,GZip,GLM,Loess,DataFrames,Plots,Dates
-    using StatsPlots,ColorSchemes,Findpeaks,Clustering,Random,StatsBase
+    using MultivariateStats,HDF5,GZip,GLM,Loess,DataFrames,CairoMakie,Dates
+    using ColorSchemes,Peaks,Clustering,Random,StatsBase
     using Statistics,RuntimeGeneratedFunctions,Distances,SparseArrays,TSne,UMAP
     using LinearAlgebra,Graphs,SimpleWeightedGraphs,NearestNeighbors
-    using HypothesisTests,MultipleTesting
+    using HypothesisTests,MultipleTesting,NaturalSort
     import KernelDensity
 
     export Read10X
     export MergeRawData
-    export FeaturePercentage!,ManualFilter!,AutoFilter!,QcPlot
+    export FeaturePercentage!,ManualFilter!,AutoFilter!
     export NormalizeData!,SelectHVG!,RegressObs!,FeatureScore!
-    export PCA!,RunTSNE!,RunUMAP!,FastRowScale!
+    export PCA!,TSNE!,UMAP!,FastRowScale!
     export Clustering!
     export DE!
     export Harmony!
-    export SaveSeuratV4
+    export SaveSeuratV4,SaveAnnData
+    export FeatureHeat,DimensionPoints,DrawQC,FeatureVariances,ElbowPCA
+    export FeatureViolin,FeatureFracDots
 
     if Threads.nthreads() != 1
         throw(ArgumentError("Only support one thread!"))
@@ -34,6 +36,8 @@ module AutomaticSingleCellToolbox
     include("Clustering.jl")
     include("DE.jl")
     include("Harmony.jl")
+    include("Visualization.jl")
+    include("Utils.jl")
 
     # https://www.science.org/doi/abs/10.1126/science.aad0501
     # 2019 updated symbols

@@ -1,3 +1,18 @@
+"""
+    Read10X(Path)
+
+Load the output result of 10X Cellranger quantification.
+
+# Arguments
+- `Path::AbstractString`: the directory path of 
+  barcodes.tsv/genes.tsv/matrix.mtx or h5 file.
+
+# Keyword Arguments
+- `min_features::Union{Nothing,Integer} = nothing`: drop cells containing 
+  features less than this number.
+- `min_cells::Union{Nothing,Integer} = nothing`: drop features containing 
+  cells less than this number.
+"""
 function Read10X(Path::AbstractString;
         min_features::Union{Nothing,Integer} = nothing,
         min_cells::Union{Nothing,Integer} = nothing)

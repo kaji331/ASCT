@@ -35,10 +35,41 @@ mutable struct HarmonyObj
     ran_init::Bool
 end
 
+"""
+    Harmony!(objs)
+
+Integrate single-cell datasets using harmony algorithm.
+
+# Arguments
+- `objs::Union{WsObj,Vector{WsObj}}`: a single-cell WsObj struct or WsObj vector.
+
+# Keyword Arguments
+- `project_name::AbstractString = "WsObj_batch"`: a column name in obs for 
+  integrated data.
+- `batches::Union{AbstractString,Vector{<: AbstractString},Symbol} = :auto`: 
+  :auto will make each WsObj as a batch, one string would find the column name 
+  in obs for just one WsObj and the vector will represent the batch of each 
+  WsObj or cell based the length of vector.
+- `ref_batches::Union{Vector{<: AbstractString},Nothing} = nothing`: the batch 
+  names for optional reference batches.
+- `hvg_number::Union{Symbol,Integer} = 2000`: the top number of features for 
+  highly variable selection or the symbol :auto for auto-determine of numbers.
+- `hvg_method::Symbol = :simple`: the symbol of :simple, :loess and :dbscan for 
+  different method used by highly variable number selection.
+- `max_pca::Integer = 50`: max principal components would be calculated.
+- `pca_method::AbstractString = "PCA"`: "Arpack" or "TSVD" might be better for 
+  large data.
+- `use_pc::Union{Integer,Symbol} = :auto`: only 1:cut PCs will be used 
+  downstream automatically.
+- `min_features::Union{Nothing,Integer} = nothing`: drop cells containing 
+  features less than this number.
+- `min_cells::Union{Nothing,Integer} = nothing`: drop features containing 
+  cells less than this number.
+"""
 function Harmony!(objs::Union{WsObj,Vector{WsObj}};
-        project_name::String = "WsObj_batch",
-        batches::Union{String,Vector{String},Symbol} = :auto,
-        ref_batches::Union{Vector{String},Nothing} = nothing,
+        project_name::AbstractString = "WsObj_batch",
+        batches::Union{AbstractString,Vector{<: AbstractString},Symbol} = :auto,
+        ref_batches::Union{Vector{<: AbstractString},Nothing} = nothing,
         hvg_number::Union{Symbol,Integer} = 2000,
         hvg_method::Symbol = :simple,
         max_pca::Integer = 50,

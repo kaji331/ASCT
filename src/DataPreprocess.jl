@@ -1,3 +1,14 @@
+"""
+    NormalizeData!(obj)
+
+Add a "norm_dat" into WsObj's dat.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `ptr::AbstractString = "raw"`: calculation on raw data.
+"""
 function NormalizeData!(obj::WsObj;
         ptr::AbstractString = "raw")
 
@@ -20,6 +31,21 @@ function NormalizeData!(obj::WsObj;
     return "Finished!"
 end
 
+"""
+    SelectHVG!(obj)
+
+Add the information of highly variable features directly.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `hvg_number::Union{Symbol,Integer} = 2000`: the top number of features for 
+  highly variable selection or the symbol :auto for auto-determine of numbers.
+- `ptr::AbstractString = "raw"`: calculation on raw data.
+- `method::Symbol = :simple`: the symbol of :simple, :loess and :dbscan for 
+  different method used by highly variable number selection.
+"""
 function SelectHVG!(obj::WsObj;
         hvg_number::Union{Symbol,Integer} = 2000,
         ptr::AbstractString = "raw",
@@ -80,14 +106,14 @@ function SelectHVG!(obj::WsObj;
     # Output
     if isnothing(obj.meta)
         obj.meta = Dict("hvg_name" => obj.var.name[idx],
-                        "hvg_index" => idx,
-                        "hvg_mean" => avg,
-                        "hvg_var_std" => variances_std)
+                        "hvg_index" => idx)
+        obj.var[!,"hvg_mean"] = avg
+        obj.var[!,"hvg_var_std"] = variances_std
     else
         obj.meta["hvg_name"] = obj.var.name[idx]
         obj.meta["hvg_index"] = idx
-        obj.meta["hvg_mean"] = avg
-        obj.meta["hvg_var_std"] = variances_std
+        obj.var[!,"hvg_mean"] = avg
+        obj.var[!,"hvg_var_std"] = variances_std
     end
 
     # log
@@ -96,27 +122,27 @@ function SelectHVG!(obj::WsObj;
     return "Finished!"
 end
 
+"""
+    RegressObs!(obj)
+
+Add a "regress_dat" into WsObj's dat.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `var::AbstractString = "percentage_mt"`: the column name of obs for regression.
+- `use_hvg::Bool = true`: only calculate highly variable features.
+- `ptr::AbstractString = "norm"`: calculation on normalized data.
+"""
 function RegressObs!(obj::WsObj;
         var::AbstractString = "percentage_mt",
         use_hvg::Bool = true,
         ptr::AbstractString = "norm")
 
-    if var in keys(obj.meta)
-        if typeof(obj.meta[var]) == DataFrame
-            latent_data = copy(obj.meta[var])
-        else
-            latent_data = DataFrame(obj.meta[var],:auto)
-        end
-    elseif var in names(obj.obs)
-        latent_data = DataFrame()
-        latent_data[!,var] = obj.obs[:,var]
-    end
+    latent_data = DataFrame(var => obj.obs[!,var])
 
-    if !@isdefined(latent_data)
-        return "Nothing to do! No var found in WsObj!"
-    else
-        model = term("y") ~ sum(term.(names(latent_data)))
-    end
+    model = term("y") ~ sum(term.(names(latent_data)))
 
     if use_hvg
         dat = obj.dat[ptr * "_dat"][obj.meta["hvg_index"],:]' |> sparse
@@ -141,10 +167,24 @@ function RegressObs!(obj::WsObj;
     return "Finished!"
 end
 
+"""
+    FeatureScore!(obj)
+
+Calculate cell scores for some features and assign cells to different groups.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `features::Union{Nothing,Dict{T,Vector{T}} where T <: AbstractString} = 
+  nothing`: a dictionary containing different groups of mark features.
+- `meta_name::AbstractString = "cell_cycle"`: the column name for result in obs.
+- `seed::Integer = 1`: random seed.
+- `ptr::AbstractString = "norm"`: calculation on normalized data.
+"""
 function FeatureScore!(obj::WsObj;
         features::Union{Nothing,
-                        Dict{AbstractString,
-                             Vector{AbstractString}}} = nothing,
+                        Dict{T,Vector{T}} where T <: AbstractString} = nothing,
         meta_name::AbstractString = "cell_cycle",
         seed::Integer = 1,
         ptr::AbstractString = "norm")
@@ -224,15 +264,11 @@ function FeatureScore!(obj::WsObj;
     end
 
     # Output
-    if isnothing(obj.meta)
-        obj.meta = Dict(meta_name => scores)
-    else
-        obj.meta[meta_name] = scores
-    end
+    obj.obs[!,meta_name] = scores
     if "s" in keys(features) && "g2m" in keys(features)
-        obj.meta[meta_name * "_phase"] = assignment
+        obj.obs[!,meta_name * "_phase"] = assignment
     else
-        obj.meta[meta_name * "_assignment"] = assignment
+        obj.obs[!,meta_name * "_assignment"] = assignment
     end
 
     # log
@@ -253,7 +289,7 @@ function Judge(x::DataFrameRow)
 end
 
 # Find cutoff for HVGs selection
-function FindCutoff1(variances_std::Vector{Float32})
+function FindCutoff1(variances_std::Vector{<: AbstractFloat})
     # 1000 windows and window peak
     bin = range(minimum(variances_std),maximum(variances_std);length=1001)
     dense = Int[]
@@ -268,8 +304,8 @@ function FindCutoff1(variances_std::Vector{Float32})
 end
 
 # Find cutoff for HVGs selection by a simple, might be unreliable method
-function FindCutoff2(avg::Vector{Float64},
-        variances_std::Vector{Float32};
+function FindCutoff2(avg::Vector{<: AbstractFloat},
+        variances_std::Vector{<: AbstractFloat};
         method::Symbol = :simple)
     if method == :dbscan
         # After DBSCAN, auto-selection by top 1/30 avg

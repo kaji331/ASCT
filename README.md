@@ -4,8 +4,10 @@
 
 - [x] Analyzing single-cell data in Julia, like Seurat v4 in R.
 - [x] Automatically choosing parameters for each function to implement auto pipeline.
+- [x] Add some functions for simple visualization.
+- [x] Add help informations for functions.
+- [x] Data exchange to other tools.
 - [ ] Add more advanced funtions for dimensinal reduction, pseudotime analysis etc.
-- [ ] Data exchange to other tools.
 - [ ] Large-scaling by Julia's performance/data structure optimization.
 - [ ] Web-based app for single-cell beginners and wet-lab users.
 
@@ -25,9 +27,14 @@ saves all transformed data, meta information and operation logs.
 8. DE.jl: Definition of the functions for marker genes identification.
 9. DataManipulation.jl: Definition of the functions for data manipulation.
 10. Harmony.jl: Reimplementation of harmony algorithm for data integration. 
+11. Visualization.jl: Implementation of some functions for plotting.
 
-## Tutorials
+## Examples
 
 - pbmc3k: [jupyter](doc/pbmc3k.ipynb)
 - neuron9k: [jupyter](doc/neuron9k.ipynb)
 - harmony algorithm: [jupyter](doc/Harmony.ipynb)
+
+## Citation
+
+doi: https://doi.org/10.1101/2023.12.27.573479

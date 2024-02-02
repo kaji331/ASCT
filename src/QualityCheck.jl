@@ -1,6 +1,22 @@
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
 # Calculation the percentage of gene
+"""
+    FeaturePercentage!(obj)
+
+Add the percentage values of some features to the WsObj.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `regex::Union{Regex,Nothing} = r"^[m|M][t|T]-"`: a regular expression for 
+  feature selection.
+- `gene::Union{Vector{<: AbstractString},Nothing} = nothing`: a vector 
+  containing feature names for calculation. Mask regular expression.
+- `ptr::AbstractString = "raw"`: calculation on raw data.
+- `obs_name::AbstractString = "percentage_mt"`: column name for result in obs.
+"""
 function FeaturePercentage!(obj::WsObj;
         regex::Union{Regex,Nothing} = r"^[m|M][t|T]-",
         gene::Union{Vector{T} where T <: AbstractString,Nothing} = nothing,
@@ -35,16 +51,30 @@ function FeaturePercentage!(obj::WsObj;
 
     # log
     push!(obj.log,String("FeaturePercentage!(WsObj;regex=$regex," * 
-                         "gene=$gene,ptr=$ptr,obs_name=$obs_name"))
+                         "gene=$gene,ptr=$ptr,obs_name=$obs_name)"))
 
     return "Finished!"
 end
 
 # Filtering cells manually
+"""
+    ManualFilter!(obj)
+
+Filter the WsObj directly by user-defined threshold.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `obs_name::Union{Nothing,AbstractString} = nothing`: a column name in obs.
+- `var_name::Union{Nothing,AbstractString} = nothing`: a column name in var.
+- `expr::Union{Nothing,AbstractString} = nothing`: a string like "> 500".
+- `ptr::AbstractString = "raw"`: calculation on raw data.
+"""
 function ManualFilter!(obj::WsObj;
         obs_name::Union{Nothing,AbstractString} = nothing,
         var_name::Union{Nothing,AbstractString} = nothing,
-        expr::Union{AbstractString,Nothing} = nothing,
+        expr::Union{Nothing,AbstractString} = nothing,
         ptr::AbstractString = "raw")
 
     if !isnothing(obs_name) && !isnothing(var_name)
@@ -92,11 +122,26 @@ function ManualFilter!(obj::WsObj;
 
     # log
     push!(obj.log,String("ManualFilter!(WsObj;obs_name=$obs_name," * 
-                         "var_name=$var_name,expr=$expr,ptr=$ptr"))
+                         "var_name=$var_name,expr=$expr,ptr=$ptr)"))
 
     return "Finished!"
 end
 
+"""
+    AutoFilter!(obj)
+
+Filter the WsObj automatically.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `obs_name::Union{Nothing,AbstractString} = "percentage_mt"`: a column name in 
+  obs.
+- `operator::AbstractString = "<"`: keep sign. Only "<" or ">"!
+- `filter_UmiFeature::Bool = true`: filter umi/feature numbers or not.
+- `ptr::AbstractString = "raw"`: calculation on raw data.
+"""
 function AutoFilter!(obj::WsObj;
         obs_name::Union{Nothing,AbstractString} = "percentage_mt",
         operator::AbstractString = "<",
@@ -113,7 +158,8 @@ function AutoFilter!(obj::WsObj;
         @info "Filtering cells by $obs_name ..."
         dense = KernelDensity.kde(dat)
         # Find peaks and check distribution
-        peak_idx = findpeaks(dense.density,min_height=0.1)
+        peaks = findmaxima(dense.density)
+        peak_idx = peaks[1][peaks[2] .> 0.1]
         if length(peak_idx) > 1
             @warn "Distribution of data might be abnormal!?"
         end
@@ -166,38 +212,4 @@ function AutoFilter!(obj::WsObj;
     push!(obj.log,String("AutoFilter!(WsObj;obs_name=$obs_name,ptr=$ptr)"))
 
     return "Finished!"
-end
-
-# Convenient plotting function for quality checking
-function QcPlot(obj::WsObj;
-        obs_name::Union{Nothing,AbstractString} = nothing,
-        ptr::AbstractString = "raw")
-    # Data checking
-    if isnothing(obs_name)
-        if "cell_counts" in names(obj.obs) && "cell_features" in names(obj.obs)
-            x = obj.obs.cell_counts
-            y = obj.obs.cell_features
-            # combine 2 plots
-            xticks = obj.obs.cell_counts |> maximum |> 
-                x -> round(x / 10000) |> x -> [ y * 10000 for y in 1:x ]
-            p = plot(x,y,st=[:scatter,:histogram2d],xticks=xticks,ma=0.1,ms=5,
-                     markershape=:hexagon,msc="white",legend=false,layout=2,
-                     bin=75)
-            p.series_list[1].plotattributes[:markercolor] = "red"
-            p.series_list[2].plotattributes[:fillcolor] = ColorSchemes.Reds_3[:]
-            p
-        else
-            throw(DomainError(obs_name,
-                              String("The 'cell_counts' and/or " * 
-                                     "'cell_features' are/is not existed in " * 
-                                     "the obs keys!")))
-        end
-    else
-        if obs_name in names(obj.obs)
-            x = obj.obs[:,obs_name]
-            plot(x,st=:density,c="red",legend=false,linewidth=4,linealpha=0.5)
-        else
-            @warn "No $obs_name in the keys of 'obs'!"
-        end
-    end
 end

@@ -1,4 +1,22 @@
 # Calculation of PCA
+"""
+    PCA!(obj)
+
+Add the PCA results into WsObj.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `max_pc::Integer = 50`: max principal components would be calculated.
+- `use_hvg::Bool = true`: only use highly variable features or not.
+- `method::AbstractString = "PCA"`: "Arpack" or "TSVD" might be better for large 
+  data.
+- `cut::Union{Integer,Symbol} = :auto`: only 1:cut PCs will be used downstream 
+  automatically.
+- `seed::Integer = -1`: random seed.
+- `ptr::AbstractString = :auto`: calculation on raw data.
+"""
 function PCA!(obj::WsObj;
         max_pc::Integer = 50,
         use_hvg::Bool = true,
@@ -19,7 +37,7 @@ function PCA!(obj::WsObj;
 
     # Scaling
     if "scale_dat" in keys(obj.dat)
-        @warn "Using pre-calculated scale data..."
+        @info "Using pre-calculated scale data..."
         dat = obj.dat["scale_dat"]
     else
         @info "Scaling data..."
@@ -84,13 +102,44 @@ function PCA!(obj::WsObj;
     return "Finished!"
 end
 
-function RunUMAP!(obj::WsObj;
+"""
+    UMAP!(obj)
+
+Add the UMAP results into WsObj.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `reduction::Union{AbstractString,Symbol} = :auto`: if there's a harmony in the 
+  meta of WsObj, it will use harmony data or pca data.
+- `use_pc::Union{AbstractString,Integer} = "pca_cut"`: a number of top PCs for 
+  calculation or the automatical threshold from PCA! function.
+- `map_dims::Integer = 2`: max dimensions of UMAP result.
+- `seed::Integer = -1`: random seed.
+- `n_neighbors::Integer = 30`: number of k nearest neighbors.
+- `metric::SemiMetric = CosineDist()`: the function of distance calculation.
+- `min_dist::Real = 0.5`: control the distances among points.
+- `n_epochs::Integer = 300`: the number of training epochs.
+- `learning_rate::Real = 1`: the initial learning rate.
+- `init::Symbol = :spectral`: how to initialize the output embedding. :spectral 
+  or :random.
+- `spread::Real = 1`: the effective scale.
+- `set_operation_ratio::Real = 1`: between 0 and 1. 1 means pure fuzzy union, 
+  and 0 means pure fuzzy intersection.
+- `local_connectivity::Integer = 1`: the number by assumed local connection of 
+  nearest neighbors.
+- `repulsion_strength::Real = 1`: the weights of negative samples.
+- `neg_sample_rate::Integer = 5`: higer value will increase computational cost 
+  but slightly more accuracy.
+"""
+function UMAP!(obj::WsObj;
         reduction::Union{AbstractString,Symbol} = :auto,
         use_pc::Union{AbstractString,Integer} = "pca_cut",
         map_dims::Integer = 2,
         seed::Integer = -1,
         n_neighbors::Integer = 30,
-        metric::Union{SemiMetric,Symbol} = CosineDist(),
+        metric::SemiMetric = CosineDist(),
         min_dist::Real = 0.5,
         n_epochs::Integer = 300,
         learning_rate::Real = 1,
@@ -143,22 +192,22 @@ function RunUMAP!(obj::WsObj;
     obj.meta["umap"] = y
 
     # log
-    push!(obj.log,String("RunUMAP!(WsObj;" * 
-                         "reduction = $reduction," * 
-                         "use_pc = $use_pc," * 
-                         "map_dims = $map_dims," * 
-                         "seed = $seed," * 
-                         "n_neighbors = $n_neighbors," * 
-                         "metric = $metric," * 
-                         "min_dist = $min_dist," * 
-                         "n_epochs = $n_epochs," * 
-                         "learning_rate = $learning_rate," * 
-                         "init = $init," * 
-                         "spread = $spread," * 
-                         "set_operation_ratio = $set_operation_ratio," * 
-                         "local_connectivity = $local_connectivity," * 
-                         "repulsion_strength = $repulsion_strength," * 
-                         "neg_sample_rate = $neg_sample_rate)"))
+    push!(obj.log,String("UMAP!(WsObj;" * 
+                         "reduction=$reduction," * 
+                         "use_pc=$use_pc," * 
+                         "map_dims=$map_dims," * 
+                         "seed=$seed," * 
+                         "n_neighbors=$n_neighbors," * 
+                         "metric=$metric," * 
+                         "min_dist=$min_dist," * 
+                         "n_epochs=$n_epochs," * 
+                         "learning_rate=$learning_rate," * 
+                         "init=$init," * 
+                         "spread=$spread," * 
+                         "set_operation_ratio=$set_operation_ratio," * 
+                         "local_connectivity=$local_connectivity," * 
+                         "repulsion_strength=$repulsion_strength," * 
+                         "neg_sample_rate=$neg_sample_rate)"))
 
     return "Finished!"
 end
@@ -177,12 +226,12 @@ function FastTSNE(X::AbstractMatrix;
         mom_switch_iter::Integer = 250,
         momentum::AbstractFloat = 0.5,
         final_momentum::AbstractFloat = 0.8,
-        learning_rate::String = "auto",
+        learning_rate::Union{Symbol,AbstractFloat} = :auto,
         early_exag_coeff::Real = 12,
         no_momentum_during_exag::Bool = false,
         n_trees::Integer = 50,
-        search_k::Union{Nothing,Integer} = nothing,
-        start_late_exag_iter::Union{String,Integer} = "auto",
+        search_k::Union{Symbol,Integer} = :auto,
+        start_late_exag_iter::Union{Symbol,Integer} = :auto,
         late_exag_coeff::Real = -1,
         nterms::Integer = 3,
         intervals_per_integer::Real = 1,
@@ -210,11 +259,11 @@ function FastTSNE(X::AbstractMatrix;
         end
     version_number = match(r"v(.*) ===",check_fast_tsne)[1]
 
-    if learning_rate == "auto"
+    if learning_rate == :auto
         learning_rate = maximum([200,size(X,1) / early_exag_coeff])
     end
 
-    if start_late_exag_iter == "auto"
+    if start_late_exag_iter == :auto
         if late_exag_coeff > 0
             start_late_exag_iter = stop_early_exag_iter
         else
@@ -243,7 +292,7 @@ function FastTSNE(X::AbstractMatrix;
         perplexity = -1
     end
 
-    if isnothing(search_k)
+    if search_k == :auto
         if perplexity > 0
             search_k = 3 * perplexity * n_trees
         elseif perplexity == 0
@@ -310,7 +359,7 @@ function FastTSNE(X::AbstractMatrix;
         write(f,Float64(theta))
         write(f,Float64(perplexity))
         if perplexity == 0
-            write(f,Int32(length(perlexity_list)))
+            write(f,Int32(length(perplexity_list)))
             for perpl in perplexity_list
                 write(f,Float64(perpl))
             end
@@ -375,7 +424,62 @@ function FastTSNE(X::AbstractMatrix;
     end
 end
 
-function RunTSNE!(obj::WsObj;
+"""
+    TSNE!(obj)
+
+Add the t-SNE results into WsObj.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `reduction::Union{AbstractString,Symbol} = :auto`: if there's a harmony in the 
+  meta of WsObj, it will use harmony data or pca data.
+- `use_pc::Union{AbstractString,Integer} = "pca_cut"`: a number of top PCs for 
+  calculation or the automatical threshold from PCA! function.
+- `fast::Bool = true`: use FIt-SNE or not.
+- `theta::AbstractFloat = 0.5`: FIt-SNE precision. 0 for exact.
+- `perplexity::Real = 30`: determine the bandwidth of the Gaussian kernel.
+- `map_dims::Integer = 2`: max dimensions of t-SNE result.
+- `max_iter::Integer = 750`: number of iterations.
+- `stop_early_exag_iter::Integer = 250`: when to switch off early exaggeration.
+- `K::Integer = -1`: number of k nearest neighbors.
+- `sigma::Real = -1`: fixed sigma when perplexity is -1.
+- `nbody_algo::String = "FFT"`: "FFT" or "Barnes-Hut".
+- `knn_algo::String = "annoy"`: "annoy" or "vp-tree".
+- `mom_switch_iter::Integer = 250`: iteration number from momentum to 
+  final_momentum.
+- `momentum::AbstractFloat = 0.5`: initial momentum.
+- `final_momentum::AbstractFloat = 0.8`: momentum used for later optimization.
+- `learning_rate::Union{Symbol,AbstractFloat} = :auto`: :auto or a float number.
+- `early_exag_coeff::Real = 12`: coefficient for early exaggeration.
+- `no_momentum_during_exag::Bool = false`: swith off momentum during the early 
+  exaggeration.
+- `n_trees::Integer = 50`: number of search trees for annoy.
+- `search_k::Union{Symbol,Integer} = :auto`: number of nodes to inspect during 
+  search for annoy.
+- `start_late_exag_iter::Union{Symbol,Integer} = :auto`: when to start late 
+  exaggeration.
+- `late_exag_coeff::Real = -1`: coefficient for late exaggeration.
+- `nterms::Integer = 3`: number of interpolation points per sub-interval.
+- `seed::Integer = -1`: random seed.
+- `initialization::Union{AbstractString,Matrix{<: AbstractFloat}} = "pca"`: 
+  the matrix of initialization.
+- `load_affinities::Union{Nothing,AbstractString} = nothing`: "save" or "load" 
+  the input similarities.
+- `perplexity_list::Union{Nothing,Vector{<: AbstractFloat}} = nothing`: a list 
+  of perplexities to used as a perplexity combination.
+- `df::Real = 1`: controls the degree of freedom of t-distribution.
+- `nthreads::Integer = -1`: number of threads. -1 for all available threads.
+- `max_step_norm::Union{Nothing,Integer} = 5`: max distance that a point is 
+  allowed to move on one iteration.
+- `verbose::Bool = false`: output informational and diagnostic messages for 
+  TSne.jl.
+- `progress::Bool = true`: display progress meter during t-SNE optimization.
+- `extended_output::Bool = false`: return a tuple of embedded coordinates 
+  matrix, point perplexities and final Kullback-Leibler divergence or not.
+"""
+function TSNE!(obj::WsObj;
         reduction::Union{AbstractString,Symbol} = :auto,
         use_pc::Union{AbstractString,Integer} = "pca_cut",
         fast::Bool = true,
@@ -391,12 +495,12 @@ function RunTSNE!(obj::WsObj;
         mom_switch_iter::Integer = 250,
         momentum::AbstractFloat = 0.5,
         final_momentum::AbstractFloat = 0.8,
-        learning_rate::String = "auto",
+        learning_rate::Union{Symbol,AbstractFloat} = :auto,
         early_exag_coeff::Real = 12,
         no_momentum_during_exag::Bool = false,
         n_trees::Integer = 50,
-        search_k::Union{Nothing,Integer} = nothing,
-        start_late_exag_iter::Union{String,Integer} = "auto",
+        search_k::Union{Symbol,Integer} = :auto,
+        start_late_exag_iter::Union{Symbol,Integer} = :auto,
         late_exag_coeff::Real = -1,
         nterms::Integer = 3,
         intervals_per_integer::Real = 1,
@@ -506,52 +610,66 @@ function RunTSNE!(obj::WsObj;
     end
     
     # log
-    push!(obj.log,String("RunTSNE!(WsObj;" * 
-                         "reduction = $reduction," * 
-                         "use_pc = $use_pc," * 
-                         "fast = $fast," * 
-                         "theta = $theta," * 
-                         "perplexity = $perplexity," * 
-                         "map_dims = $map_dims," * 
-                         "max_iter = $max_iter," * 
-                         "stop_early_exag_iter = $stop_early_exag_iter," * 
-                         "K = $K," * 
-                         "sigma = $sigma," * 
-                         "nbody_algo = $nbody_algo," * 
-                         "knn_algo = $knn_algo," * 
-                         "mom_switch_iter = $mom_switch_iter," * 
-                         "momentum = $momentum," * 
-                         "final_momentum = $final_momentum," * 
-                         "learning_rate = $learning_rate," * 
-                         "early_exag_coeff = $early_exag_coeff," * 
-                         "no_momentum_during_exag = $no_momentum_during_exag," * 
-                         "n_trees = $n_trees," * 
-                         "search_k = $search_k," * 
-                         "start_late_exag_iter = $start_late_exag_iter," * 
-                         "late_exag_coeff = $late_exag_coeff," * 
-                         "nterms = $nterms," * 
-                         "intervals_per_integer = $intervals_per_integer," * 
-                         "min_num_intervals = $min_num_intervals," * 
-                         "seed = $seed," * 
-                         "initialization = $initialization," * 
-                         "load_affinities = $load_affinities," * 
-                         "perplexity_list = $perplexity_list," * 
-                         "df = $df," * 
-                         "nthreads = $nthreads," * 
-                         "max_step_norm = $max_step_norm," * 
-                         "verbose = $verbose," * 
-                         "progress = $progress," * 
-                         "min_gain = $min_gain," * 
-                         "extended_output = $extended_output)"))
+    push!(obj.log,String("TSNE!(WsObj;" * 
+                         "reduction=$reduction," * 
+                         "use_pc=$use_pc," * 
+                         "fast=$fast," * 
+                         "theta=$theta," * 
+                         "perplexity=$perplexity," * 
+                         "map_dims=$map_dims," * 
+                         "max_iter=$max_iter," * 
+                         "stop_early_exag_iter=$stop_early_exag_iter," * 
+                         "K=$K," * 
+                         "sigma=$sigma," * 
+                         "nbody_algo=$nbody_algo," * 
+                         "knn_algo=$knn_algo," * 
+                         "mom_switch_iter=$mom_switch_iter," * 
+                         "momentum=$momentum," * 
+                         "final_momentum=$final_momentum," * 
+                         "learning_rate=$learning_rate," * 
+                         "early_exag_coeff=$early_exag_coeff," * 
+                         "no_momentum_during_exag=$no_momentum_during_exag," * 
+                         "n_trees=$n_trees," * 
+                         "search_k=$search_k," * 
+                         "start_late_exag_iter=$start_late_exag_iter," * 
+                         "late_exag_coeff=$late_exag_coeff," * 
+                         "nterms=$nterms," * 
+                         "intervals_per_integer=$intervals_per_integer," * 
+                         "min_num_intervals=$min_num_intervals," * 
+                         "seed=$seed," * 
+                         "initialization=$initialization," * 
+                         "load_affinities=$load_affinities," * 
+                         "perplexity_list=$perplexity_list," * 
+                         "df=$df," * 
+                         "nthreads=$nthreads," * 
+                         "max_step_norm=$max_step_norm," * 
+                         "verbose=$verbose," * 
+                         "progress=$progress," * 
+                         "min_gain=$min_gain," * 
+                         "extended_output=$extended_output)"))
 
     return "Finished!"
 end
 
+"""
+    FastRowScale!(obj)
+
+Add the scale data into WsObj's dat.
+
+# Arguments
+- `obj::WsObj`: a single-cell WsObj struct.
+
+# Keyword Arguments
+- `center::Bool = true`: centralize the data or not.
+- `scale::Bool = true`: scale the data or not
+- `scale_max::Real = 10`: 10 is the default value, like Seurat/Scanpy.
+- `ptr::AbstractString = "norm"`: calculation on raw data.
+"""
 function FastRowScale!(obj::WsObj;
         center::Bool = true,
         scale::Bool = true,
         scale_max::Real = 10,
-        ptr::String = "norm")
+        ptr::AbstractString = "norm")
 
     mat = copy(obj.dat[ptr * "_dat"])' |> sparse
     if center
