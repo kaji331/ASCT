@@ -132,12 +132,12 @@ Add a "regress_dat" into WsObj's dat.
 
 # Keyword Arguments
 - `var::AbstractString = "percentage_mt"`: the column name of obs for regression.
-- `use_hvg::Bool = true`: only calculate highly variable features.
+- `use_hvg::Bool = false`: only calculate highly variable features.
 - `ptr::AbstractString = "norm"`: calculation on normalized data.
 """
 function RegressObs!(obj::WsObj;
         var::AbstractString = "percentage_mt",
-        use_hvg::Bool = true,
+        use_hvg::Bool = false,
         ptr::AbstractString = "norm")
 
     latent_data = DataFrame(var => obj.obs[!,var])
@@ -152,7 +152,7 @@ function RegressObs!(obj::WsObj;
 
     resid = Vector{Vector{Float32}}()
     for col in 1:dat.n
-        latent_data.y = Vector(dat[:,col])
+        latent_data.y = Float64.(dat[:,col]) # compatible with GLM functions
         push!(resid,
               lm(model,latent_data) |> residuals |> x -> x .-= minimum(x))
     end
@@ -213,7 +213,7 @@ function FeatureScore!(obj::WsObj;
     end
 
     # Generate control data
-    avg_genes = dat * ones(Int32,dat.n) ./ dat.n
+    avg_genes = dat * ones(Int64,dat.n) ./ dat.n
     GC.gc()
     order_avg = sortperm(avg_genes)
     gene_names_ordered = gene_names[order_avg]
@@ -264,7 +264,7 @@ function FeatureScore!(obj::WsObj;
     end
 
     # Output
-    obj.obs[!,meta_name] = scores
+    obj.obs = hcat(obj.obs,scores)
     if "s" in keys(features) && "g2m" in keys(features)
         obj.obs[!,meta_name * "_phase"] = assignment
     else

@@ -72,20 +72,18 @@ function Read10X(Path::AbstractString;
 
         # Basic calculation
         @info "Gathering basic information"
-        cell_counts = dat' * ones(Int32,shape[1])
+        cell_counts = dat' * ones(Int64,shape[1])
         cell_features = [ dat.colptr[col + 1] - dat.colptr[col] for col in 1:dat.n ]
         dat = dat' |> sparse
-        cells = [ dat.colptr[col + 1] - dat.colptr[col] for col in 1:dat.n ]
-        features["feature_cells"] = cells
-        not_zero = cells .!= 0
-        for k in keys(features)
-            features[k] = features[k][not_zero]
-        end
+        features.feature_cells = [ dat.colptr[col + 1] - dat.colptr[col] 
+                                  for col in 1:dat.n ]
+        not_zero = features.feature_cells .!= 0
+        features = features[not_zero,:]
         obj = WsObj(Dict("raw_dat" => dat[:,not_zero]' |> sparse),
                     DataFrame("barcodes" => barcodes,
                               "cell_counts" => cell_counts,
                               "cell_features" => cell_features),
-                    DataFrame(features),
+                    features,
                     String[],
                     nothing)
 
@@ -152,33 +150,34 @@ function GenerateObjH5(h5,key)
     if "features" in keys(h5["$key"])
         features = read(h5["$key/features"])
     elseif "genes" in keys(h5["$key"]) && "gene_names" in keys(h5["$key"])
-        features = Dict{AbstractString,
-                        AbstractVector}("id" => read(h5["$key/genes"]),
-                                        "name" => read(h5["$key/gene_names"]))
+        features = DataFrame("id" => read(h5["$key/genes"]),
+                             "name" => read(h5["$key/gene_names"]))
     end
     chemistry = read_attribute(h5,"chemistry_description")
 
     # Basic calculation
     @info "Gathering basic information"
-    cell_counts = dat' * ones(Int32,shape[1])
+    cell_counts = dat' * ones(Int64,shape[1])
     cell_features = [ dat.colptr[col + 1] - dat.colptr[col] for col in 1:dat.n ]
     dat = dat' |> sparse
-    cells = [ dat.colptr[col + 1] - dat.colptr[col] for col in 1:dat.n ]
-    features["feature_cells"] = cells
-    not_zero = cells .!= 0
-    for k in keys(features)
-        if length(features[k]) == length(cells)
-            features[k] = features[k][not_zero]
-        else
-            features[k] = repeat(features[k],count(not_zero))
+    if typeof(features) <: Dict
+        for k in keys(features)
+            if length(features[k]) != dat.n
+                features[k] = repeat(features[k],dat.n)
+            end
         end
+        features = DataFrame(features)
     end
+    features.feature_cells = [ dat.colptr[col + 1] - dat.colptr[col] 
+                              for col in 1:dat.n ]
+    not_zero = features.feature_cells .!= 0
+    features = features[not_zero,:]
 
     return WsObj(Dict("raw_dat" => dat[:,not_zero]' |> sparse),
                  DataFrame("barcodes" => barcodes,
                            "cell_counts" => cell_counts,
                            "cell_features" => cell_features),
-                 DataFrame(features),
+                 features,
                  String[],
                  Dict("chemistry_description" => chemistry))
 end
@@ -186,9 +185,9 @@ end
 function GenerateMatrix(Path)
     @info "Currently, only support Cellranger's result!!!"
     @info "Reading matrix directory ..."
-    shape = Int32[]
-    c = Int32[]
-    r = Int32[]
+    shape = Int64[]
+    c = Int64[]
+    r = Int64[]
     v = Int32[]
     @info "Generating matrix ..."
     try
@@ -200,11 +199,11 @@ function GenerateMatrix(Path)
                 else
                     if counter == 1
                         counter = -1
-                        append!(shape,parse.(Int32,split(line)))
+                        append!(shape,parse.(Int64,split(line)))
                     else
                         ele = split(line)
-                        push!(c,parse(Int32,ele[1]))
-                        push!(r,parse(Int32,ele[2]))
+                        push!(c,parse(Int64,ele[1]))
+                        push!(r,parse(Int64,ele[2]))
                         push!(v,parse(Int32,ele[3]))
                     end
                 end
@@ -219,11 +218,11 @@ function GenerateMatrix(Path)
                 else
                     if counter == 1
                         counter = -1
-                        append!(shape,parse.(Int32,split(line)))
+                        append!(shape,parse.(Int64,split(line)))
                     else
                         ele = split(line)
-                        push!(c,parse(Int32,ele[1]))
-                        push!(r,parse(Int32,ele[2]))
+                        push!(c,parse(Int64,ele[1]))
+                        push!(r,parse(Int64,ele[2]))
                         push!(v,parse(Int32,ele[3]))
                     end
                 end
@@ -275,13 +274,9 @@ function GenerateFeatures(Path)
         end
     end
     if isempty(ft)
-        features = Dict{AbstractString,AbstractVector}("id" => id,
-                                                       "name" => name)
+        features = DataFrame("id" => id,"name" => name)
     else
-        features = Dict{AbstractString,
-                        AbstractVector}("id" => id,
-                                        "name" => name,
-                                        "feature_type" => ft)
+        features = DataFrame("id" => id,"name" => name,"feature_type" => ft)
     end
 
     return features

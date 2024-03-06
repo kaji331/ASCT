@@ -6,8 +6,7 @@ Merge raw counts from different WsObj structs into a single WsObj.
 # Arguments
 - `objs::Vector{WsObj}`: a vector containing different WsObj structs.
 - `grp::Dict{<: AbstractString,<: AbstractVector}`: a dictionary. The key means 
-  a column name of observation, and the vector means the labels of different 
-  datasets.
+  a column name of batches, and the vector means the each label of cells.
 
 # Keyword Arguments
 - `min_features::Union{Nothing,Integer} = nothing`: drop cells containing 
@@ -26,49 +25,71 @@ function MergeRawData(objs::Vector{WsObj},
         grp::Dict{<: AbstractString,<: AbstractVector};
         min_features::Union{Nothing,Integer} = nothing,
         min_cells::Union{Nothing,Integer} = nothing)
-    # Merge dat using DataFrame. Need to optimize in future!
     @info "Data merging..."
-    all_dat = [ hcat(DataFrame(gene=obj.var.name),
-                     DataFrame(id=obj.var.id),
-                     DataFrame(Matrix(obj.dat["raw_dat"]),
-                               obj.obs.barcodes .* "_$i")) 
-               for (i,obj) in enumerate(objs) ] |> 
-        x -> outerjoin(x...,on=:gene,validate=(true,true),makeunique=true)
-    id = match.(r"^id",names(all_dat)) |> x -> all_dat[!,x .!= nothing]
-    id = [ unique(id[i,:]) |> x -> join(x[typeof.(x) .!= Missing],"_") 
-          for i in 1:size(id,1) ]
-    all_dat = match.(r"^id",names(all_dat)) |> x -> all_dat[!,x .== nothing]
-    all_dat.id = id
-    @inbounds @simd for col in eachcol(all_dat)
-        replace!(col,missing => 0)
+    features = [ obj.var.name for obj in objs ]
+    com_features = unique(vcat(features...))
+    row_idx = [ indexin(f,com_features) for f in features ]
+
+    row_val = Int64[]
+    val = Int32[]
+    col = Int64[]
+    for (i,obj) in enumerate(objs)
+        curr_row_val = repeat(row_idx[i],obj.dat["raw_dat"].n)
+        curr_val = vcat([Vector(obj.dat["raw_dat"][:,j]) 
+                         for j in 1:obj.dat["raw_dat"].n]...)
+        curr_col = repeat(1:obj.dat["raw_dat"].n;
+                          inner=obj.dat["raw_dat"].m)
+        if i != 1
+            curr_col .+= sum([ objs[j].dat["raw_dat"].n for j in 1:(i - 1) ])
+        end
+        idx_nz = curr_val .!= 0
+        curr_row_val = curr_row_val[idx_nz]
+        curr_val = curr_val[idx_nz]
+        curr_col = curr_col[idx_nz]
+        append!(row_val,curr_row_val)
+        append!(val,curr_val)
+        append!(col,curr_col)
     end
-    dat = all_dat[!,Not(:gene,:id)] |> Matrix |> SparseMatrixCSC{Int32,Int32}
-    features = Dict{AbstractString,
-                    AbstractVector}("id" => String.(all_dat.id),
-                                    "name" => String.(all_dat.gene))
-    barcodes = names(all_dat)[2:(dat.n + 1)]
-    all_dat = nothing
-    GC.gc()
+    dat = sparse(row_val,col,val,length(com_features),
+                 sum([ obj.dat["raw_dat"].n for obj in objs ]))
+    # For id
+    id_idx = [ indexin(com_features,f) for f in features ]
+    id = nothing
+    for (idx,obj) in enumerate(objs)
+        if isnothing(id)
+            id = [ isnothing(i) ? "." : obj.var.id[i] for i in id_idx[idx] ]
+        else
+            for (i,iv) in enumerate(id_idx[idx])
+                if !isnothing(iv) && id[i] == "."
+                    id[i] = obj.var.id[iv]
+                end
+            end
+        end
+    end
+    # For barcodes
+    barcodes = vcat([ obj.obs.barcodes .* "_$i" 
+                     for (i,obj) in enumerate(objs) ]...)
+    # Features
+    features = DataFrame("id" => id,"name" => com_features)
+
 
     # Create WsObj
     # Basic calculation
     @info "Creating WsObj..."
-    cell_counts = dat' * ones(Int,size(dat,1))
+    cell_counts = dat' * ones(Int64,size(dat,1))
     cell_features = [ dat.colptr[col + 1] - dat.colptr[col] for col in 1:dat.n ]
     dat = dat' |> sparse
-    cells = [ dat.colptr[col + 1] - dat.colptr[col] for col in 1:dat.n ]
-    features["feature_cells"] = cells
-    not_zero = cells .!= 0
-    for k in keys(features)
-        features[k] = features[k][not_zero]
-    end
+    features.feature_cells = [ dat.colptr[col + 1] - dat.colptr[col] 
+                              for col in 1:dat.n ]
+    not_zero = features.feature_cells .!= 0
+    features = features[not_zero,:]
     push!(grp,
           "barcodes" => barcodes,
           "cell_counts" => cell_counts,
           "cell_features" => cell_features)
     obj = WsObj(Dict("raw_dat" => dat[:,not_zero]' |> sparse),
                 DataFrame(grp),
-                DataFrame(features),
+                features,
                 String[],
                 nothing)
 
@@ -207,13 +228,13 @@ function SaveSeuratV4(obj::WsObj,
     h5["meta.data/nCount_RNA"] = obj.obs.cell_counts
     h5["meta.data/nFeature_RNA"] = obj.obs.cell_features
     for m in meta_colnames2
-        if eltype(obj.obs[!,m]) <: AbstractFloat
-            h5["meta.data/" * m] = obj.obs[!,m]
-        else
+        if eltype(obj.obs[!,m]) <: Integer
             create_group(h5,"meta.data/" * m)
             h5["meta.data/" * m * "/levels"] = 
                 obj.obs[!,m] |> unique |> sort |> x -> string.(x)
             h5["meta.data/" * m * "/values"] = obj.obs[!,m]
+        else
+            h5["meta.data/" * m] = obj.obs[!,m]
         end
     end
     if isnothing(obj.meta)

@@ -1,7 +1,7 @@
 name = "AutomaticSingleCellToolbox"
 uuid = "e6202555-39b2-4a04-a024-3007b9347e88"
 authors = ["yangling <yangling@westlake.edu.cn>"]
-version = "0.9.0"
+version = "0.9.1"
 
 [deps]
 Arpack = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"

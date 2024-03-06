@@ -59,8 +59,8 @@ Integrate single-cell datasets using harmony algorithm.
 - `max_pca::Integer = 50`: max principal components would be calculated.
 - `pca_method::AbstractString = "PCA"`: "Arpack" or "TSVD" might be better for 
   large data.
-- `use_pc::Union{Integer,Symbol} = :auto`: only 1:cut PCs will be used 
-  downstream automatically.
+- `use_pc::Union{Integer,Symbol} = :LinearRegression`: only 1:cut PCs will be 
+  used downstream automatically.
 - `min_features::Union{Nothing,Integer} = nothing`: drop cells containing 
   features less than this number.
 - `min_cells::Union{Nothing,Integer} = nothing`: drop features containing 
@@ -74,7 +74,7 @@ function Harmony!(objs::Union{WsObj,Vector{WsObj}};
         hvg_method::Symbol = :simple,
         max_pca::Integer = 50,
         pca_method::AbstractString = "PCA",
-        use_pc::Union{Symbol,Integer} = :auto,
+        use_pc::Union{Symbol,Integer} = :LinearRegression,
         min_features::Union{Nothing,Integer} = nothing,
         min_cells::Union{Nothing,Integer} = nothing)
 

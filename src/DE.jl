@@ -30,8 +30,7 @@ Find markers of cell groups.
 - `cosg_top::Integer = 50`: keep top results of cosg algorithm.
 - `sub_group::Tuple{Vector{<: AbstractString},Vector{<: AbstractString}} = 
   (String[],[])`: set sub-groups for test.
-- `ptr::Union{Symbol,AbstractString} = :auto`: use "norm\\_dat" or 
-  "regress\\_dat".
+- `ptr::AbstractString = "norm"`: usually use "norm\\_dat".
 
 # Example
 ```julia-repl
@@ -55,15 +54,10 @@ function DE!(obj::WsObj;
         cosg_top::Integer = 50,
         sub_group::Tuple{Vector{<: AbstractString},Vector{<: AbstractString}} = 
             (String[],String[]),
-        ptr::Union{Symbol,AbstractString} = :auto)
+        ptr::AbstractString = "norm")
 
     Random.seed!(seed < 0 ? 1984 : seed)
     # Check parameters
-    if ptr == :auto && "regress_dat" in keys(obj.dat)
-        ptr = "regress"
-    elseif ptr == :auto && !("regress_dat" in keys(obj.dat))
-        ptr = "norm"
-    end
     if !(0 <= min_frac <= 1)
         return "Nothing to do! 'min_frac' is only support between 0 and 1!"
     end

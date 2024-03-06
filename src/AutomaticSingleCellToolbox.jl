@@ -18,7 +18,7 @@ module AutomaticSingleCellToolbox
     export Harmony!
     export SaveSeuratV4,SaveAnnData
     export FeatureHeat,DimensionPoints,DrawQC,FeatureVariances,ElbowPCA
-    export FeatureViolin,FeatureFracDots
+    export FeatureViolin,FeatureFracDots,FeatureDimension,FeatureJitters,PropBar
 
     if Threads.nthreads() != 1
         throw(ArgumentError("Only support one thread!"))

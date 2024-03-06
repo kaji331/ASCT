@@ -12,8 +12,8 @@ Add the PCA results into WsObj.
 - `use_hvg::Bool = true`: only use highly variable features or not.
 - `method::AbstractString = "PCA"`: "Arpack" or "TSVD" might be better for large 
   data.
-- `cut::Union{Integer,Symbol} = :auto`: only 1:cut PCs will be used downstream 
-  automatically.
+- `cut::Union{Integer,Symbol} = :LinearRegression`: only 1:cut PCs will be used 
+  downstream automatically.
 - `seed::Integer = -1`: random seed.
 - `ptr::AbstractString = :auto`: calculation on raw data.
 """
@@ -21,18 +21,13 @@ function PCA!(obj::WsObj;
         max_pc::Integer = 50,
         use_hvg::Bool = true,
         method::AbstractString = "PCA",
-        cut::Union{Integer,Symbol} = :auto,
+        cut::Union{Integer,Symbol} = :LinearRegression,
         seed::Integer = -1,
         ptr::Union{Symbol,AbstractString} = :auto)
 
     # Check parameters
     if max_pc < 3 || max_pc > 100
         return "Nothing to do! 'max_pc' is Only support 3 ~ 100 !"
-    end
-    if ptr == :auto && "regress_dat" in keys(obj.dat)
-        ptr = "regress"
-    elseif ptr == :auto && !("regress_dat" in keys(obj.dat))
-        ptr = "norm"
     end
 
     # Scaling
@@ -58,31 +53,35 @@ function PCA!(obj::WsObj;
     if method == "PCA"
         M = MultivariateStats.fit(PCA,dat;maxoutdim=max_pc)
         Y = MultivariateStats.transform(M,dat)' |> Matrix
-        pv = principalvars(M)
-        cumulative_var = log10.(pv .^ 2 / sum(pv .^ 2))
+        var = principalvars(M)
     elseif method == "Arpack"
+        # Original matrix m (rows are observation, columns are features) is: 
+        #   U * diagm(S) * V'
+        # or 
+        #   U * Diagonal(S) * V' (for sparse matrix)
+
         Random.seed!(seed < 0 ? 1984 : seed)
         U,S,V = svds(dat';nsv=max_pc)[1]
-        cumulative_var = log10.(S .^ 2 / sum(S .^ 2))
+        var = S .^ 2
     else
         Random.seed!(seed < 0 ? 1984 : seed)
         U,S,V = tsvd(dat',max_pc)
-        cumulative_var = log10.(S .^ 2 / sum(S .^ 2))
+        var = S .^ 2
     end
 
-    if cut == :auto
-        # Elbow threshold
-        @info "Linear regression for Elbow threshold ..."
-        dif = DataFrame(axis_x=[1,max_pc],
-                        axis_y=[cumulative_var[1],cumulative_var[end]]) |> 
-            x -> lm(@formula(axis_y ~ axis_x),x) |> 
-            x -> GLM.predict(x,DataFrame(axis_x=1:max_pc)) |>
-            x -> x .- cumulative_var
-        cut = findmax(dif)[2]
-        cut = cut > 2 ? (cut + 1) : 3
+    if cut == :LinearRegression
+        # Better results for current tests
+        @info "Looking for Elbow threshold..."
+        cut = FindElbowPointLM(var)
+        @info "We recommend top $cut PCs for downstream analysis automatically!"
+    elseif cut == :ParallelAnalysis
+        # Better performance
+        @info "Looking for Elbow threshold..."
+        cut = FindElbowPoint(var)
         @info "We recommend top $cut PCs for downstream analysis automatically!"
     elseif typeof(cut) <: Symbol
-        return "Nothing to do! 'cut' is only ':auto' or an positive integer!"
+        return "Nothing to do! 'cut' is only :LinearRegression, " * 
+            ":ParallelAnalysis or an positive integer!"
     end
 
     # Output
@@ -92,7 +91,8 @@ function PCA!(obj::WsObj;
         # https://medium.com/machine-learning-world/linear-algebra-svd-and-pca-5979f739e95a
         obj.meta["pca"] = U * diagm(S)
     end
-    obj.meta["pca_var"] = 10 .^ cumulative_var
+    # Variance explained, not proportion explained.
+    obj.meta["pca_var"] = var ./ sum(var)
     obj.meta["pca_cut"] = cut
 
     # log
@@ -663,13 +663,22 @@ Add the scale data into WsObj's dat.
 - `center::Bool = true`: centralize the data or not.
 - `scale::Bool = true`: scale the data or not
 - `scale_max::Real = 10`: 10 is the default value, like Seurat/Scanpy.
-- `ptr::AbstractString = "norm"`: calculation on raw data.
+- `ptr::Union{Symbol,AbstractString} = :auto`: use "norm\\_dat", "regress\\_dat" 
+  or :auto.
 """
 function FastRowScale!(obj::WsObj;
         center::Bool = true,
         scale::Bool = true,
         scale_max::Real = 10,
-        ptr::AbstractString = "norm")
+        ptr::Union{Symbol,AbstractString} = :auto)
+
+    if ptr == :auto && "regress_dat" in keys(obj.dat)
+        ptr = "regress"
+    elseif ptr == :auto && !("regress_dat" in keys(obj.dat))
+        ptr = "norm"
+    elseif typeof(ptr) <: Symbol && ptr != :auto
+        return "Nothing to do! 'ptr' needs :auto or a specific name of dat!"
+    end
 
     mat = copy(obj.dat[ptr * "_dat"])' |> sparse
     if center
@@ -733,4 +742,50 @@ function FastRowScale(m::AbstractSparseMatrix;
 
     # Scaled matrix
     return mat
+end
+
+# From kevinblighe/PCAtools for R language in github.com
+# Use variances, not standard deviations
+function FindElbowPoint(variances::Vector{<: AbstractFloat})
+    lv = length(variances)
+    dx = lv - 1
+    dy = variances[end] - variances[1]
+    l2 = sqrt(dx ^ 2 + dy ^ 2)
+    dx = dx / l2
+    dy = dy / l2
+
+    dx0 = eachindex(variances) .- 1
+    dy0 = variances .- variances[1]
+
+    parallel_l2 = sqrt.((dx0 .* dx) .^ 2 .+ (dy0 .* dy) .^ 2)
+    normal_x = dx0 .- dx .* parallel_l2
+    normal_y = dy0 .- dy .* parallel_l2
+    normal_l2 = sqrt.(normal_x .^ 2 .+ normal_y .^ 2)
+
+    below_line = (normal_x .< 0) .& (normal_y .< 0)
+    if !any(below_line)
+        return lv
+    else
+        cut = findall(below_line)[findmax(normal_l2[below_line])[2]] + 3
+        if cut <= lv
+            return cut
+        else
+            return lv
+        end
+    end
+end
+
+function FindElbowPointLM(variances::Vector{<: AbstractFloat})
+    value = log10.(variances .^ 2 / sum(variances .^ 2))
+    lv = length(value)
+    dif = DataFrame(axis_x=[1,lv],axis_y=[value[1],value[end]]) |> 
+        x -> lm(@formula(axis_y ~ axis_x),x) |> 
+        x -> GLM.predict(x,DataFrame(axis_x=1:lv)) |> 
+        x -> x .- value
+    cut = findmax(dif)[2] + 1
+    if cut <= lv
+        return cut
+    else
+        return lv
+    end
 end
