@@ -1141,7 +1141,7 @@ function PropBar(obj::WsObj;
         end
         barplot!(axis,libraries,s.Props;stack=s.Groups,color=s.Groups,
                  colormap=cs,strokecolor=:gray25,strokewidth=0.25,alpha=alpha)
-        text!(ax,labels;
+        text!(axis,labels;
               position=Point2f.((libraries .- 1) + 
                                 (repeat(range(0.55,1.4;
                                               length=length(unique(s.Groups))),
