@@ -14,13 +14,11 @@ function NormalizeData!(obj::WsObj;
 
     dat = copy(obj.dat[ptr * "_dat"]) |> x -> Float32.(x)
 
-    # Fast way for SparseArrays
-    for col in 1:dat.n
-        cs = sum(dat.nzval[dat.colptr[col]:dat.colptr[col + 1] - 1])
-        dat.nzval[dat.colptr[col]:dat.colptr[col + 1] - 1] .= 
-            log1p.(dat.nzval[dat.colptr[col]:dat.colptr[col + 1] - 1] ./ 
-                   cs * 1e4)
-    end
+    map(col -> (cs = sum(dat.nzval[dat.colptr[col]:dat.colptr[col + 1] - 1]);
+                dat.nzval[dat.colptr[col]:dat.colptr[col + 1] - 1] .= 
+                    log1p.(dat.nzval[dat.colptr[col]:dat.colptr[col + 1] - 1] ./ 
+                           cs * 1e4)),
+        1:dat.n) # faster than for-loop
 
     # Output
     obj.dat["norm_dat"] = dat
@@ -30,6 +28,20 @@ function NormalizeData!(obj::WsObj;
 
     return "Finished!"
 end
+
+function NormalizeData(m::AbstractSparseMatrix)
+
+    dat = Float32.(m)
+
+    map(col -> (cs = sum(dat.nzval[dat.colptr[col]:dat.colptr[col + 1] - 1]);
+                dat.nzval[dat.colptr[col]:dat.colptr[col + 1] - 1] .= 
+                    log1p.(dat.nzval[dat.colptr[col]:dat.colptr[col + 1] - 1] ./ 
+                           cs * 1e4)),
+        1:dat.n) # faster than for-loop
+
+    return dat
+end
+
 
 """
     SelectHVG!(obj)
@@ -67,14 +79,14 @@ function SelectHVG!(obj::WsObj;
     std_exp = sqrt.(variances_exp)
 
     idx = [ i for i in 1:dat.n ][std_exp .!= 0]
-    for col in idx
-        s = sum([ minimum([clip_max,
-                           (dat.nzval[i] - avg[col]) / std_exp[col]]) ^ 2 
-                 for i in dat.colptr[col]:dat.colptr[col + 1] - 1 ])
-        s += ((0 - avg[col]) / std_exp[col]) ^ 2 * 
-            (dat.m - dat.colptr[col + 1] + dat.colptr[col])
-        variances_std[col] = s / (dat.m - 1)
-    end
+    map(col -> (s = sum([ minimum([clip_max,
+                                   (dat.nzval[i] - avg[col]) / 
+                                   std_exp[col]]) ^ 2
+                         for i in dat.colptr[col]:dat.colptr[col + 1] - 1 ]);
+                s += ((0 - avg[col]) / std_exp[col]) ^ 2 * 
+                    (dat.m - dat.colptr[col + 1] + dat.colptr[col]);
+                variances_std[col] = s / (dat.m - 1)),
+        idx)
 
     if hvg_number == :auto
         if method == :loess
@@ -122,6 +134,63 @@ function SelectHVG!(obj::WsObj;
     return "Finished!"
 end
 
+function SelectHVG(dat::AbstractSparseMatrix,
+        gene_name::Vector{<: AbstractString};
+        hvg_number::Union{Symbol,Integer} = 2000,
+        method::Symbol = :simple)
+
+    dat = dat' |> sparse
+    clip_max = sqrt(dat.m)
+    # 'mean' is faster for columns, slower for rows to matrix multiplication
+    avg = mean(dat;dims=1)' 
+    variances = var(dat;dims=1)' |> vec |> Vector
+    variances_exp = zeros(Float32,dat.n)
+    variances_std = zeros(Float32,dat.n)
+    idx_more_zero = variances .> 0
+    x = log10.(avg[idx_more_zero])
+    y = log10.(variances[idx_more_zero])
+    # Locally regression, span is 0.3 in Seurat
+    m = loess(x,y;span=0.3)
+    variances_exp[idx_more_zero] = 10 .^ Loess.predict(m,x)
+    std_exp = sqrt.(variances_exp)
+
+    idx = [ i for i in 1:dat.n ][std_exp .!= 0]
+    map(col -> (s = sum([ minimum([clip_max,
+                                   (dat.nzval[i] - avg[col]) / 
+                                   std_exp[col]]) ^ 2
+                         for i in dat.colptr[col]:dat.colptr[col + 1] - 1 ]);
+                s += ((0 - avg[col]) / std_exp[col]) ^ 2 * 
+                    (dat.m - dat.colptr[col + 1] + dat.colptr[col]);
+                variances_std[col] = s / (dat.m - 1)),
+        idx)
+
+    if hvg_number == :auto
+        if method == :loess
+            cutoff = FindCutoff1(variances_std)
+        elseif method == :simple
+            cutoff = FindCutoff2(avg,variances_std;method=method)
+        elseif method == :dbscan
+            cutoff = FindCutoff2(avg,variances_std;method=method)
+        else
+            @warn "Only ':simple', ':dbscan' and ':loess' were supported for " * 
+                " 'method'! ':simple' is selected for wrong method!"
+            cutoff = FindCutoff2(avg,variances_std;method=method)
+        end
+        idx = findall(x -> x > cutoff,variances_std)
+    else
+        idx = findall(x -> x <= hvg_number,
+                      sortperm(variances_std;rev=true) |> invperm)
+    end
+    @info "$(length(idx)) HVGs were selected automatically!"
+
+    hvg = Dict("hvg_name" => gene_name[idx,:],
+               "hvg_index" => idx,
+               "hvg_mean" => avg,
+               "hvg_var_std" => variances_std)
+    return hvg
+end
+
+
 """
     RegressObs!(obj)
 
@@ -151,11 +220,11 @@ function RegressObs!(obj::WsObj;
     end
 
     resid = Vector{Vector{Float32}}()
-    for col in 1:dat.n
-        latent_data.y = Float64.(dat[:,col]) # compatible with GLM functions
-        push!(resid,
-              lm(model,latent_data) |> residuals |> x -> x .-= minimum(x))
-    end
+    map(col -> (latent_data.y = Float64.(dat[:,col]);
+                push!(resid,
+                      lm(model,latent_data) |> residuals |> 
+                        x -> x .-= minimum(x))),
+        1:dat.n)
 
     # dat
     obj.dat["regress_dat"] = log1p.(hcat(resid...)') |> sparse
@@ -165,6 +234,21 @@ function RegressObs!(obj::WsObj;
                          "ptr=$ptr)"))
 
     return "Finished!"
+end
+
+function RegressObs(hvg_norm_dat::AbstractSparseMatrix,
+        latent_data::DataFrame)
+
+    model = term("y") ~ sum(term.(names(latent_data)))
+    resid = Vector{Vector{Float32}}()
+    dat = hvg_norm_dat' |> sparse
+    map(col -> (latent_data.y = Float64.(dat[:,col]);
+                push!(resid,
+                      lm(model,latent_data) |> residuals |> 
+                        x -> x .-= minimum(x))),
+        1:dat.n)
+
+    return log1p.(hcat(resid...)') | sparse
 end
 
 """
@@ -199,12 +283,9 @@ function FeatureScore!(obj::WsObj;
     gene_names = obj.var.name
     # Check genes
     tmp = Dict{eltype(features).types[1],Vector{Int64}}()
-    for k in keys(features)
-        idx = findall(x -> x in features[k],gene_names)
-        if !isempty(idx)
-            push!(tmp,k => idx)
-        end
-    end
+    map(k -> (idx = findall(x -> x in features[k],gene_names);
+              isempty(idx) ? nothing : push!(tmp,k => idx)),
+        keys(features))
     if !isempty(tmp)
         features = tmp
         tmp = nothing
@@ -222,35 +303,30 @@ function FeatureScore!(obj::WsObj;
     seq = repeat(1:24;inner=width)
     if dat.m % 24 != 0
         index = 24
-        @simd for i in 1:(dat.m % 24)
-            if i % 2 == 1
-                push!(seq,index)
-                index -= 1
-            else
-                push!(seq,24 - index)
-            end
-        end
+        map(i -> i % 2 == 1 ? (push!(seq,index);index -= 1) : 
+                push!(seq,24 - index),
+            1:dat.m % 24)
         seq = sort(seq)
     end
 
     scores = DataFrame()
-    @inbounds for k in keys(features)
+    @inbounds @fastmath @simd for k in keys(features)
         d = dat[features[k],:]
         if typeof(d) <: AbstractSparseVector
             avg_feature_cell = d
         else
             avg_feature_cell = d' * ones(Int32,d.m) ./ d.m
         end
+
         ctrl_idx = Vector{Vector{Int}}()
         Random.seed!(seed < 0 ? 1984 : seed)
-        @simd for j in features[k]
-            idx = findfirst(x -> x == gene_names[j],
-                            gene_names_ordered)
-            idx = findall(x -> x == seq[idx],seq)
-            idx = sample(idx,100)
-            push!(ctrl_idx,
-                  findall(x -> x in gene_names_ordered[idx],gene_names))
-        end
+        map(j -> (idx = findfirst(x -> x == gene_names[j],gene_names_ordered);
+                  idx = findall(x -> x == seq[idx],seq);
+                  idx = sample(idx,100);
+                  push!(ctrl_idx,findall(x -> x in gene_names_ordered[idx],
+                                         gene_names))),
+            features[k])
+
         d = dat[unique(vcat(ctrl_idx...)),:]
         avg_ctrl_cell = d' * ones(Int32,d.m) ./ d.m
         scores[!,k] = avg_feature_cell - avg_ctrl_cell
@@ -293,9 +369,7 @@ function FindCutoff1(variances_std::Vector{<: AbstractFloat})
     # 1000 windows and window peak
     bin = range(minimum(variances_std),maximum(variances_std);length=1001)
     dense = Int[]
-    for i in 2:1001
-        push!(dense,count(bin[i - 1] .< variances_std .< bin[i]))
-    end
+    map(i -> push!(dense,count(bin[i - 1] .< variances_std .< bin[i])),2:1001)
     pk = findlast(x -> x == maximum(dense),dense)
     # LOESS regression
     loess_model = loess(pk:1000,dense[pk:1000];span=0.05)

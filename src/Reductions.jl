@@ -1,4 +1,3 @@
-# Calculation of PCA
 """
     PCA!(obj)
 
@@ -42,7 +41,7 @@ function PCA!(obj::WsObj;
 
     # High variable genes
     if use_hvg && size(dat,1) > length(obj.meta["hvg_index"])
-        dat = dat[obj.meta["hvg_index"],:]
+        dat = @view dat[obj.meta["hvg_index"],:]
     end
 
     # PCA
@@ -144,7 +143,7 @@ function UMAP!(obj::WsObj;
         n_epochs::Integer = 300,
         learning_rate::Real = 1,
         init::Symbol = :spectral,
-        spread::Real = 1,
+        spread::Real = 2,
         set_operation_ratio::Real = 1,
         local_connectivity::Integer = 1,
         repulsion_strength::Real = 1,

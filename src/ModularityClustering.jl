@@ -6,9 +6,8 @@ function ModClustering(nn::AbstractSparseMatrix;
         itn::Integer = 10,
         seed::Integer = 0)
 
-    network_size = length(nn.nzval) / 2 + 3
     nn = LowerTriangular(nn) |> sparse
-    for i in 1:nn.n
+    @inbounds @fastmath @simd for i in 1:nn.n
         nn[i,i] = 0
     end
     dropzeros!(nn)
@@ -29,11 +28,11 @@ function ModClustering(nn::AbstractSparseMatrix;
     Seed!(random,seed)
     clustering = nothing
     modularity = nothing
-    for i in 1:rsn
+    @inbounds for i in 1:rsn
         vosct = VOSct(network,resolution2)
         j = 1
         update = true
-        while true
+        while j <= itn && update
             if algorithm == 1
                 update = Louvain!(vosct,random)
             else
@@ -42,7 +41,6 @@ function ModClustering(nn::AbstractSparseMatrix;
             end
             j += 1
             modularity = Quality(vosct)
-            (j <= itn && update) || break
         end
 
         if modularity > max_modularity

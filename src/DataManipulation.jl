@@ -25,6 +25,7 @@ function MergeRawData(objs::Vector{WsObj},
         grp::Dict{<: AbstractString,<: AbstractVector};
         min_features::Union{Nothing,Integer} = nothing,
         min_cells::Union{Nothing,Integer} = nothing)
+
     @info "Data merging..."
     features = [ obj.var.name for obj in objs ]
     com_features = unique(vcat(features...))
@@ -122,9 +123,9 @@ function SaveSeuratV4(obj::WsObj,
     h5 = h5open(file,"w")
 
     # Attributions
-    HDF5.attributes(h5)["active.assay"] = ["RNA"]
-    HDF5.attributes(h5)["project"] = [project]
-    HDF5.attributes(h5)["version"] = ["4.0.0"]
+    HDF5.attrs(h5)["active.assay"] = ["RNA"]
+    HDF5.attrs(h5)["project"] = [project]
+    HDF5.attrs(h5)["version"] = ["4.0.0"]
 
     # Datasets
 
@@ -136,21 +137,21 @@ function SaveSeuratV4(obj::WsObj,
     h5["assays/RNA/counts/data"] = obj.dat["raw_dat"].nzval
     h5["assays/RNA/counts/indices"] = obj.dat["raw_dat"].rowval .- 1
     h5["assays/RNA/counts/indptr"] = obj.dat["raw_dat"].colptr .- 1
-    HDF5.attributes(h5["assays/RNA"])["key"] = ["rna_"]
-    HDF5.attributes(h5["assays/RNA/counts"])["dims"] = 
+    HDF5.attrs(h5["assays/RNA"])["key"] = ["rna_"]
+    HDF5.attrs(h5["assays/RNA/counts"])["dims"] = 
         [obj.dat["raw_dat"].m,obj.dat["raw_dat"].n]
 
     if "norm_dat" in keys(obj.dat)
         h5["assays/RNA/data/data"] = obj.dat["norm_dat"].nzval
         h5["assays/RNA/data/indices"] = obj.dat["norm_dat"].rowval .- 1
         h5["assays/RNA/data/indptr"] = obj.dat["norm_dat"].colptr .- 1
-        HDF5.attributes(h5["assays/RNA/data"])["dims"] = 
+        HDF5.attrs(h5["assays/RNA/data"])["dims"] = 
             [obj.dat["norm_dat"].m,obj.dat["norm_dat"].n]
     else
         h5["assays/RNA/data/data"] = obj.dat["raw_dat"].nzval
         h5["assays/RNA/data/indices"] = obj.dat["raw_dat"].rowval .- 1
         h5["assays/RNA/data/indptr"] = obj.dat["raw_dat"].colptr .- 1
-        HDF5.attributes(h5["assays/RNA/data"])["dims"] = 
+        HDF5.attrs(h5["assays/RNA/data"])["dims"] = 
             [obj.dat["raw_dat"].m,obj.dat["raw_dat"].n]
     end
 
@@ -171,6 +172,7 @@ function SaveSeuratV4(obj::WsObj,
     create_group(h5,"commands")
     current_time = now() |> string |> splitext |> 
         x -> replace(x[1],"T" => " ")
+    # Only record the last command with same name.
     for command in obj.log
         # assay_used = match(r"ptr=(.*?)\)",command)
         # assay_used = isnothing(assay_used) ? "NA" : assay_used.captures[1]
@@ -181,18 +183,25 @@ function SaveSeuratV4(obj::WsObj,
                        command) |> 
             x -> [ command[m] for m in x ] |> x -> split.(x,"=") |> 
             x -> [ strip.(e) for e in x ]
-        create_group(h5,"commands/" * name)
-        HDF5.attributes(h5["commands/" * name])["assay.used"] = [assay_used]
-        HDF5.attributes(h5["commands/" * name])["call.string"] = [call_string]
-        HDF5.attributes(h5["commands/" * name])["name"] = [name]
+        if name ∉ keys(h5["commands"])
+            create_group(h5,"commands/" * name)
+        end
+        HDF5.attrs(h5["commands/" * name])["assay.used"] = [assay_used]
+        HDF5.attrs(h5["commands/" * name])["call.string"] = [call_string]
+        HDF5.attrs(h5["commands/" * name])["name"] = [name]
         names = isempty(para) ? [""] : [ n[1] for n in para ]
-        HDF5.attributes(h5["commands/" * name])["names"] = names
-        HDF5.attributes(h5["commands/" * name])["time.stamp"] = [current_time]
+        HDF5.attrs(h5["commands/" * name])["names"] = names
+        HDF5.attrs(h5["commands/" * name])["time.stamp"] = [current_time]
         for p in para
-            h5["commands/" * name * "/" * p[1]] = [p[2]]
+            if p[1] ∉ keys(h5["commands/" * name])
+                h5["commands/" * name * "/" * p[1]] = [p[2]]
+            else
+                dset = h5["commands/" * name * "/" * p[1]]
+                dset[:] = [p[2]]
+            end
             if p[2] in ["true","false"]
-                HDF5.attributes(h5["commands/" * name * "/" * 
-                                   p[1]])["s3class"] = "logical"
+                HDF5.attrs(h5["commands/" * name * "/" * 
+                              p[1]])["s3class"] = "logical"
             end
         end
     end
@@ -217,7 +226,7 @@ function SaveSeuratV4(obj::WsObj,
 
     # Create meta.data
     create_group(h5,"meta.data")
-    HDF5.attributes(h5["meta.data"])["_index"] = ["_index"]
+    HDF5.attrs(h5["meta.data"])["_index"] = ["_index"]
     meta_colnames1 = ["nCount_RNA","nFeature_RNA"]
     meta_colnames2 = names(obj.obs)[findall(x -> x ∉ ["barcodes",
                                                       "cell_counts",
@@ -238,7 +247,7 @@ function SaveSeuratV4(obj::WsObj,
         end
     end
     if isnothing(obj.meta)
-        HDF5.attributes(h5["meta.data"])["colnames"] = 
+        HDF5.attrs(h5["meta.data"])["colnames"] = 
             vcat("orig.ident",meta_colnames1,meta_colnames2)
         close(h5)
         return "Finished!"
@@ -255,7 +264,7 @@ function SaveSeuratV4(obj::WsObj,
         for col in names(obj.meta[i])
             h5["misc/" * i * "/" * col] = obj.meta[i][!,col]
         end
-        HDF5.attributes(h5["misc/" * i])["colnames"] = names(obj.meta[i])
+        HDF5.attrs(h5["misc/" * i])["colnames"] = names(obj.meta[i])
     end
 
     # Fill HVGs
@@ -274,39 +283,39 @@ function SaveSeuratV4(obj::WsObj,
     # Fill reductions
     if "pca" in keys(obj.meta)
         create_group(h5,"reductions/pca")
-        HDF5.attributes(h5["reductions/pca"])["active.assay"] = ["RNA"]
-        HDF5.attributes(h5["reductions/pca"])["global"] = [0]
-        HDF5.attributes(h5["reductions/pca"])["key"] = ["PC_"]
+        HDF5.attrs(h5["reductions/pca"])["active.assay"] = ["RNA"]
+        HDF5.attrs(h5["reductions/pca"])["global"] = [0]
+        HDF5.attrs(h5["reductions/pca"])["key"] = ["PC_"]
         h5["reductions/pca/cell.embeddings"] = obj.meta["pca"]
         h5["reductions/pca/features"] = obj.meta["hvg_name"]
         h5["reductions/pca/misc/pca_cut"] = [obj.meta["pca_cut"]]
-        HDF5.attributes(h5["reductions/pca/misc"])["names"] = ["pca_cut"]
+        HDF5.attrs(h5["reductions/pca/misc"])["names"] = ["pca_cut"]
         h5["reductions/pca/pca_var"] = obj.meta["pca_var"]
     end
 
     if "tsne" in keys(obj.meta)
         create_group(h5,"reductions/tsne")
-        HDF5.attributes(h5["reductions/tsne"])["active.assay"] = ["RNA"]
-        HDF5.attributes(h5["reductions/tsne"])["global"] = [1]
-        HDF5.attributes(h5["reductions/tsne"])["key"] = ["TSNE_"]
+        HDF5.attrs(h5["reductions/tsne"])["active.assay"] = ["RNA"]
+        HDF5.attrs(h5["reductions/tsne"])["global"] = [1]
+        HDF5.attrs(h5["reductions/tsne"])["key"] = ["TSNE_"]
         h5["reductions/tsne/cell.embeddings"] = obj.meta["tsne"]
         create_group(h5,"reductions/tsne/misc")
     end
 
     if "umap" in keys(obj.meta)
         create_group(h5,"reductions/umap")
-        HDF5.attributes(h5["reductions/umap"])["active.assay"] = ["RNA"]
-        HDF5.attributes(h5["reductions/umap"])["global"] = [1]
-        HDF5.attributes(h5["reductions/umap"])["key"] = ["UMAP_"]
+        HDF5.attrs(h5["reductions/umap"])["active.assay"] = ["RNA"]
+        HDF5.attrs(h5["reductions/umap"])["global"] = [1]
+        HDF5.attrs(h5["reductions/umap"])["key"] = ["UMAP_"]
         h5["reductions/umap/cell.embeddings"] = obj.meta["umap"]
         create_group(h5,"reductions/umap/misc")
     end
 
     if "harmony" in keys(obj.meta)
         create_group(h5,"reductions/harmony")
-        HDF5.attributes(h5["reductions/harmony"])["active.assay"] = ["RNA"]
-        HDF5.attributes(h5["reductions/harmony"])["global"] = [1]
-        HDF5.attributes(h5["reductions/harmony"])["key"] = ["Harmony_"]
+        HDF5.attrs(h5["reductions/harmony"])["active.assay"] = ["RNA"]
+        HDF5.attrs(h5["reductions/harmony"])["global"] = [1]
+        HDF5.attrs(h5["reductions/harmony"])["key"] = ["Harmony_"]
         h5["reductions/harmony/cell.embeddings"] = obj.meta["harmony"]
         create_group(h5,"reductions/harmony/misc")
     end
@@ -335,8 +344,8 @@ function SaveAnnData(obj::WsObj,
     end
 
     h5 = h5open(file,"w")
-    HDF5.attributes(h5)["encoding-type"] = "anndata"
-    HDF5.attributes(h5)["encoding-version"] = "0.1.0"
+    HDF5.attrs(h5)["encoding-type"] = "anndata"
+    HDF5.attrs(h5)["encoding-version"] = "0.1.0"
 
     # X
     if "scale_dat" in keys(obj.dat)
@@ -360,7 +369,7 @@ function SaveAnnData(obj::WsObj,
     h5[pos * "/X/indptr"] = d.colptr .- 1
     EnTypeVersion!(h5,pos,"raw","0.1.0")
     EnTypeVersion!(h5,pos * "/X","csc_matrix","0.1.0")
-    HDF5.attributes(h5[pos * "/X"])["shape"] = [d.m,d.n]
+    HDF5.attrs(h5[pos * "/X"])["shape"] = [d.m,d.n]
 
     # varm(s)
     create_group(h5,pos * "/varm")
@@ -385,8 +394,8 @@ function SaveAnnData(obj::WsObj,
         idx = findall(x -> x in ["hvg_mean","hvg_var_std"],column_order)
         deleteat!(column_order,idx)
 
-        HDF5.attributes(h5[pos * "/var"])["_index"] = "_index"
-        HDF5.attributes(h5[pos * "/var"])["column-order"] = column_order
+        HDF5.attrs(h5[pos * "/var"])["_index"] = "_index"
+        HDF5.attrs(h5[pos * "/var"])["column-order"] = column_order
         EnTypeVersion!(h5,pos * "/var","dataframe","0.2.0")
 
         for i in column_order[findall(x -> x ∉ ["gene_ids","_index"],
@@ -425,8 +434,8 @@ function SaveAnnData(obj::WsObj,
             x -> string.(x)
         codes = obj.obs.clusters_latest .- 1
     end
-    HDF5.attributes(h5["obs"])["_index"] = "_index"
-    HDF5.attributes(h5["obs"])["column-order"] = column_order
+    HDF5.attrs(h5["obs"])["_index"] = "_index"
+    HDF5.attrs(h5["obs"])["column-order"] = column_order
     EnTypeVersion!(h5,"obs","dataframe","0.2.0")
 
     for i in column_order[findall(x -> x ∉ ["_index"],column_order)]
@@ -434,7 +443,7 @@ function SaveAnnData(obj::WsObj,
             h5["obs/clusters_latest/categories"] = categories
             h5["obs/clusters_latest/codes"] = codes
             EnTypeVersion!(h5,"obs/clusters_latest","categorical","0.2.0")
-            HDF5.attributes(h5["obs/clusters_latest"])["ordered"] = 0
+            HDF5.attrs(h5["obs/clusters_latest"])["ordered"] = 0
             EnTypeVersion!(h5,"obs/clusters_latest/categories","string-array",
                            "0.2.0")
             EnTypeVersion!(h5,"obs/clusters_latest/codes","array","0.2.0")
@@ -482,12 +491,22 @@ function SaveAnnData(obj::WsObj,
             group_name = para[findfirst(x -> x[1] == "group_name",para)][2]
             name = name * "." * group_name
         end
-        create_group(h5,"uns/" * name)
+        if name ∉ keys(h5["uns"])
+            create_group(h5,"uns/" * name)
+        end
         EnTypeVersion!(h5,"uns/" * name,"dict","0.1.0")
-        create_group(h5,"uns/" * name * "/params")
+        if "params" ∉ keys(h5["uns/" * name])
+            create_group(h5,"uns/" * name * "/params")
+        end
         EnTypeVersion!(h5,"uns/" * name * "/params","dict","0.1.0")
         for p in para
-            h5["uns/" * name * "/params/" * p[1]] = p[2]
+            if p[1] ∉ keys(h5["uns/" * name * "/params"])
+                h5["uns/" * name * "/params/" * p[1]] = p[2]
+            else
+                dset = h5["uns/" * name * "/params/" * p[1]]
+                write(dset,p[2]) # But the string size is limited by previous 
+                # string size ! so it is not possible to write a long string !
+            end
             EnTypeVersion!(h5,"uns/" * name * "/params/" * p[1],"string",
                            "0.2.0")
         end
@@ -525,6 +544,6 @@ function EnTypeVersion!(h5::HDF5.File,
         parent::AbstractString,
         type::AbstractString,
         version::AbstractString)
-    HDF5.attributes(h5[parent])["encoding-type"] = type
-    HDF5.attributes(h5[parent])["encoding-version"] = version
+    HDF5.attrs(h5[parent])["encoding-type"] = type
+    HDF5.attrs(h5[parent])["encoding-version"] = version
 end

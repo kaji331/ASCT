@@ -31,8 +31,8 @@ function FeatureHeat(obj::WsObj;
         gene_label_size::Union{Nothing,Integer} = nothing,
         title::AbstractString = "",
         title_size::Integer = 30,
-        width::Integer = 640,
-        height::Integer = 480,
+        width::Integer = 400,
+        height::Integer = 300,
         path::Union{Nothing,AbstractString} = nothing)
 
     # Start a figure
@@ -64,7 +64,7 @@ function FeatureHeat(obj::WsObj;
     # Heatmap
     cs = colorschemes[colorscheme]
     idx = range(1,length(cs);length=8) |> x -> round.(Integer,x) |> reverse
-    cs = cs[idx]
+    cs = cs[idx][vcat([1:2,5:8]...)]
     axis2,heat2 = heatmap(grid_layout[2,1],reverse(data',dims=2),
                           colormap=cs)
 
@@ -140,12 +140,12 @@ function DimensionPoints(obj::WsObj;
         split_name::Union{Nothing,AbstractString} = nothing,
         colorscheme::Symbol = :tableau_20,
         dim_prefix::Union{Nothing,AbstractString} = nothing,
-        point_size::Integer = 5,
+        point_size::Integer = 2,
         alpha::AbstractFloat = 0.5,
         title::AbstractString = "",
         title_size::Integer = 30,
-        width::Integer = 640,
-        height::Integer = 480,
+        width::Integer = 400,
+        height::Integer = 300,
         path::Union{Nothing,AbstractString} = nothing)
 
     # Start a figure
@@ -257,8 +257,6 @@ function DimensionPoints(obj::WsObj;
     # Make the fixed size of legend elements 
     legend_elements = [ MarkerElement(color=c,marker=:circle,makersize=15) 
                        for c in cs ]
-    # legend_elements = [ MarkerElement(color=c,marker='●',makersize=15) 
-    #                    for c in figure.scene.theme.palette.color[] ]
     Legend(grid_layout_legend[1,1],legend_elements,
            [ string(level) for level in levels ])
     colgap!(grid_layout_main,10)
@@ -302,7 +300,7 @@ function DrawQC(obj::WsObj;
         hex_colorscheme::Symbol = :viridis,
         hex_number::Union{Integer,Tuple{Integer,Integer}} = 75,
         density_color::Tuple{Symbol,AbstractFloat} = (:orangered,0.3),
-        height::Integer = 480,
+        height::Integer = 300,
         width::Union{Symbol,Integer} = :auto,
         title::Union{Symbol,AbstractString} = :auto,
         title_size::Integer = 15,
@@ -415,10 +413,10 @@ function FeatureVariances(obj::WsObj;
         x -> x .∉ Ref(intersect(x,index_red))
     scatter!(axis,obj.var.hvg_mean[index_black],
              obj.var.hvg_var_std[index_black];
-             color=base_color,alpha=alpha,size=point_size)
+             color=base_color,alpha=alpha,markersize=point_size)
     scatter!(axis,obj.var.hvg_mean[index_red],
              obj.var.hvg_var_std[index_red];
-             color=hvg_color,alpha=alpha,size=point_size)
+             color=hvg_color,alpha=alpha,markersize=point_size)
 
     # Save figure
     if !isnothing(path)
@@ -524,8 +522,8 @@ function FeatureViolin(obj::WsObj;
         gene_label_size::Union{Nothing,Integer} = nothing,
         title::AbstractString = "",
         title_size::Integer = 20,
-        width::Integer = 580,
-        height::Integer = 480,
+        width::Integer = 400,
+        height::Integer = 400,
         font_size::Integer = 10,
         y_axis_pos::Symbol = :right,
         path::Union{Nothing,AbstractString} = nothing)
@@ -572,11 +570,11 @@ function FeatureViolin(obj::WsObj;
             idx = groups .== level
             value = data[gid_ind,idx] |> Vector
             if isnothing(cs)
-                violin!(axis,repeat([i],count(idx)),value;
-                        datalimits=(0,Inf))
+                violin!(axis,repeat([i],count(idx)),value)
+                autolimits!(axis)
             else
-                violin!(axis,repeat([i],count(idx)),value;
-                        datalimits=(0,Inf),color=cs[i])
+                violin!(axis,repeat([i],count(idx)),value;color=cs[i])
+                autolimits!(axis)
             end
         end
         axis.yticks = [maximum(data[gid_ind,cell_id])]
@@ -645,10 +643,10 @@ function FeatureFracDots(obj::WsObj;
         gene_label_size::Union{Nothing,Integer} = nothing,
         title::AbstractString = "",
         title_size::Integer = 20,
-        width::Integer = 580,
-        height::Integer = 480,
+        width::Integer = 400,
+        height::Integer = 100,
         font_size::Integer = 10,
-        circle_size::Integer = 30,
+        circle_size::Integer = 25,
         y_axis_pos::Symbol = :right,
         path::Union{Nothing,AbstractString} = nothing)
 
@@ -695,9 +693,9 @@ function FeatureFracDots(obj::WsObj;
             value_mean = mean(value)
             percentage = count(value .!= 0) / count(idx)
             color = cs[findlast(x -> value_mean >= x,color_start)]
-            scatter!(axis,i,5;datalimits=(0,Inf),color=color,strokewidth=0.5,
-                     strokecolor=:black,
+            scatter!(axis,i,5;color=color,strokewidth=0.5,strokecolor=:black,
                      markersize=(percentage + 0.05) * circle_size)
+            autolimits!(axis)
         end
         axis.yaxisposition = y_axis_pos
         axis.ylabel = obj.var.name[gene_id[gid_ind]]
@@ -756,6 +754,7 @@ Draw a dimension scatter figure of features expression.
   [:steelblue,:gray90,:orange,:orangered,:red]`: a symbol of colormap or a 
   vector of color symbols.
 - `color_length::Integer = 100`: the number of color gradient.
+- `color_scale::Symbol = :feature`: how to handle the color scale.
 - `dim_prefix::Union{Nothing,AbstractString} = nothing`: prefix of axis labels. 
   default is the dimension_name.
 - `point_size:Integer = 5`: change the size of points.
@@ -773,13 +772,14 @@ function FeatureDimension(obj::WsObj;
         color::Union{Symbol,Vector{Symbol}} = 
             [:steelblue,:gray90,:orange,:orangered,:red],
         color_length::Integer = 100,
+        color_scale::Symbol = :feature,
         dim_prefix::Union{Nothing,AbstractString} = nothing,
-        point_size::Integer = 5,
+        point_size::Integer = 3,
         alpha::AbstractFloat = 0.5,
         title::AbstractString = "",
         title_size::Integer = 30,
-        width::Integer = 640,
-        height::Integer = 480,
+        width::Integer = 400,
+        height::Integer = 300,
         path::Union{Nothing,AbstractString} = nothing)
 
     # Start a figure
@@ -825,8 +825,16 @@ function FeatureDimension(obj::WsObj;
     else
         cs = cgrad(color,color_length)
     end
-    value_windows = range(minimum(obj.dat["norm_dat"]),
-                          maximum(obj.dat["norm_dat"]);length=color_length)
+    # It is same to FeaturePlot of Seurat with keep.scale="all"...
+    if color_scale == :feature
+        value_windows = range(minimum(value),maximum(value);length=color_length)
+    elseif color_scale == :all
+        value_windows = range(minimum(obj.dat["norm_dat"]),
+                              maximum(obj.dat["norm_dat"]);length=color_length)
+    else
+        return "Nothing to do! only :feature or :all are supported for " * 
+            "'color_scale'!"
+    end
 
     # Plots
     counter = 1
@@ -936,12 +944,12 @@ function FeatureJitters(obj::WsObj;
         gene_label_size::Union{Nothing,Integer} = nothing,
         title::AbstractString = "",
         title_size::Integer = 20,
-        width::Integer = 640,
-        height::Integer = 480,
+        width::Integer = 400,
+        height::Integer = 400,
         font_size::Integer = 10,
-        point_size::Integer = 5,
-        alpha::AbstractFloat = 0.5,
-        jitter_width::Real = 0.75,
+        point_size::Integer = 3,
+        alpha::Real = 1,
+        jitter_width::Real = 1,
         y_axis_pos::Symbol = :right,
         path::Union{Nothing,AbstractString} = nothing)
 
@@ -973,6 +981,7 @@ function FeatureJitters(obj::WsObj;
             nothing
         if !isnothing(cs)
             cs = cs[indexin(groups,levels)]
+            cs = [ (c,alpha) for c in cs ]
         end
     else
         cs = colorscheme
@@ -988,11 +997,11 @@ function FeatureJitters(obj::WsObj;
         value = data[gid_ind,:]
         if isnothing(cs)
             rainclouds!(axis,groups,value;clouds=nothing,plot_boxplots=false,
-                        side_nudge=0,markersize=point_size,alpha=alpha,
+                        side_nudge=0,markersize=point_size,
                         jitter_width=jitter_width)
         else
             rainclouds!(axis,groups,value;clouds=nothing,plot_boxplots=false,
-                        side_nudge=0,color=cs,markersize=point_size,alpha=alpha,
+                        side_nudge=0,color=cs,markersize=point_size,
                         jitter_width=jitter_width)
         end
         axis.yticks = [maximum(data[gid_ind,cell_id])]

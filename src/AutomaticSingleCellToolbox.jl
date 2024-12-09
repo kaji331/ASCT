@@ -1,5 +1,6 @@
 module AutomaticSingleCellToolbox
 
+    using Distributed
     using Arpack,TSVD
     using MultivariateStats,HDF5,GZip,GLM,Loess,DataFrames,CairoMakie,Dates
     using ColorSchemes,Peaks,Clustering,Random,StatsBase
@@ -8,7 +9,7 @@ module AutomaticSingleCellToolbox
     using HypothesisTests,MultipleTesting,NaturalSort
     import KernelDensity
 
-    export Read10X
+    export Read10X,ReadUMI
     export MergeRawData
     export FeaturePercentage!,ManualFilter!,AutoFilter!
     export NormalizeData!,SelectHVG!,RegressObs!,FeatureScore!
@@ -20,8 +21,8 @@ module AutomaticSingleCellToolbox
     export FeatureHeat,DimensionPoints,DrawQC,FeatureVariances,ElbowPCA
     export FeatureViolin,FeatureFracDots,FeatureDimension,FeatureJitters,PropBar
 
-    if Threads.nthreads() != 1
-        throw(ArgumentError("Only support one thread!"))
+    if Threads.nthreads() != 1 && nprocs() != 1
+        addprocs(Threads.nthreads())
     end
 
     include("DataObject.jl")

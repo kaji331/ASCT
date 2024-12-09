@@ -150,9 +150,7 @@ function AutoFilter!(obj::WsObj;
 
     # Filter cells by the elbow point of percentage_mt
     # ------
-    if !(operator in ["<",">"])
-        return "Nothing to do! 'operator' Needs \"<\" or \">\"!"
-    end
+    @assert operator in ["<",">"]
     if obs_name in names(obj.obs)
         dat = obj.obs[:,obs_name]
         @info "Filtering cells by $obs_name ..."

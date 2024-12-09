@@ -1,3 +1,8 @@
+# According to https://www.biorxiv.org/content/10.1101/2021.06.15.448484v1.full,
+# we think Wilcoxon-test (TIE) from scanpy is the best method.
+# COSG is also a top-level method.
+
+
 """
     DE!(obj)
 
@@ -112,7 +117,7 @@ function DE!(obj::WsObj;
     if !isempty(sub_group[1])
         pre_sub_idx = nothing
         curr_sub_idx = nothing
-        for i in eachindex(sub_group[1])
+        @inbounds @fastmath @simd for i in eachindex(sub_group[1])
             if i == 1
                 curr_sub_idx = 
                     string.(obj.obs[!,sub_group[1][i]]) .== 
@@ -200,7 +205,8 @@ end
 
     if isnothing(trt_grp) && isnothing(ctl_grp)
         # Each group compares REST groups
-        @inbounds for trt_grp in sort(unique(test_groups);lt=natural)
+        @inbounds @fastmath @simd for trt_grp in 
+                sort(unique(test_groups);lt=natural)
             idx_trt = findall(x -> x == trt_grp,test_groups)
             idx_ctl = findall(x -> x != trt_grp,test_groups)
             cell_number_trt = length(idx_trt)
@@ -215,7 +221,7 @@ end
             fc_pct = Float64[]
             pct1_pct = Float64[]
             pct2_pct = Float64[]
-            @simd for idx_feature in 1:rn
+            @inbounds @fastmath @simd for idx_feature in 1:rn
                 trt = @view dat_trt[idx_feature,:]
                 ctl = @view dat_ctl[idx_feature,:]
                 pct1 = round(count(x -> x != 0,trt) / cell_number_trt;
@@ -269,7 +275,7 @@ end
         fc_pct = Float64[]
         pct1_pct = Float64[]
         pct2_pct = Float64[]
-        @simd for idx_feature in 1:rn
+        @inbounds @fastmath @simd for idx_feature in 1:rn
             trt = @view dat_trt[idx_feature,:]
             ctl = @view dat_ctl[idx_feature,:]
             pct1 = round(count(x -> x != 0,trt) / cell_number_trt;
@@ -309,7 +315,7 @@ end
         # Each group compares one control group
         grp = unique(test_groups) |> x -> sort(x;lt=natural)
         grp = grp[map(x -> all(x .!= ctl_grp),grp)]
-        @inbounds for trt_grp in grp
+        @inbounds @fastmath @simd for trt_grp in grp
             idx_trt = findall(x -> x == trt_grp,test_groups)
             idx_ctl = findall(x -> any(x .== ctl_grp),test_groups)
             cell_number_trt = length(idx_trt)
@@ -324,7 +330,7 @@ end
             fc_pct = Float64[]
             pct1_pct = Float64[]
             pct2_pct = Float64[]
-            @simd for idx_feature in 1:rn
+            @inbounds @fastmath @simd for idx_feature in 1:rn
                 trt = @view dat_trt[idx_feature,:]
                 ctl = @view dat_ctl[idx_feature,:]
                 pct1 = round(count(x -> x != 0,trt) / cell_number_trt;
@@ -378,7 +384,7 @@ end
         fc_pct = Float64[]
         pct1_pct = Float64[]
         pct2_pct = Float64[]
-        for idx_feature in 1:rn
+        @inbounds @fastmath @simd for idx_feature in 1:rn
             trt = @view dat_trt[idx_feature,:]
             ctl = @view dat_ctl[idx_feature,:]
             pct1 = round(count(x -> x != 0,trt) / cell_number_trt;
@@ -476,7 +482,7 @@ end
     ϵ = λ * ones(Int,clusters_number)
     λ = λ ./ ((1 - μ) .* λ .+ μ .* repeat([ϵ;],outer=(1,clusters_number)))
     λ .*= similarity
-    @inbounds for cluster_idx in eachindex(clusters_label)
+    @inbounds @fastmath @simd for cluster_idx in eachindex(clusters_label)
         dat_cluster = dat[:,test_groups .== clusters_label[cluster_idx]]' |> 
             sparse
         # percentage
@@ -498,7 +504,7 @@ end
     # Calculate and filter log2fc, bottleneck (now @btime about 2s, @btime 
     # about 1.5s without log2fc calculation)
     all_fc = Float64[]
-    @inbounds for cluster in clusters_label
+    @inbounds @fastmath @simd for cluster in clusters_label
         row_idx = indexin(res[res.group .== cluster,:gene],genes) |> 
             x -> x[BitVector(1 .- isnothing.(x))] |> x -> Int.(x)
         dat_cluster = dat[row_idx,test_groups .== cluster]' |> sparse

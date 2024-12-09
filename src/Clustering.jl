@@ -1,4 +1,5 @@
 # We provide graph-based and kmedoids methods for clustering.
+# We also support a automatic selection of k for kmedoids.
 
 """
     Clustering!(obj)
@@ -9,7 +10,8 @@ Cluster cells by reduction matrix.
 - `obj::WsObj`: a single-cell WsObj struct.
 
 # Keyword Arguments
-- `method::AbstractString = "mc"`: currently only "mc" or "kmedoids" supported.
+- `method::AbstractString = "mc"`: currently only "mc" or "km" supported. "mc" 
+  means modularity clustering, "km" means kmedoids.
 - `reduction::Union{AbstractString,Symbol} = :auto`: :auto or give the name of 
   reduction for clustering calculation.
 - `use_pc::Union{AbstractString,Integer} = "pca_cut"`: define the name of pc 
@@ -59,8 +61,9 @@ function Clustering!(obj::WsObj;
     end
     # Check method
     # Leiden package has some problems. It should be re-written in future!
-    if !(method in ["mc","kmedoids"])
-        return "Nothing to do! 'method' is only support \"mc\"|\"kmedoids\"!"
+    # For HDF5.jl reason, now only two characters sign is allowed.
+    if !(method in ["mc","km"])
+        return "Nothing to do! 'method' is only support \"mc\"|\"km\"!"
     end
 
     # Check PCs
@@ -152,30 +155,42 @@ function KClustering!(obj::WsObj;
         # Automatically choose resolution, based the silhouettes coefficients 
         # and elbow point by total costs
         clustering_vector = Vector{KmedoidsResult{Float64}}()
-        @inbounds @simd for k in 2:max_K
-            Random.seed!(seed < 0 ? 1984 : seed)
-            push!(clustering_vector,kmedoids(dist,k))
-        end
+        resize!(clustering_vector,max_K - 1)
+        Random.seed!(seed < 0 ? 1984 : seed)
+        # for (i,k) in enumerate(2:max_K)
+        #     clustering_vector[i] = kmedoids(dist,k)
+        # end
+        pmap(x -> clustering_vector[x[1]] = kmedoids(dist,x[2]),
+             enumerate(2:max_K))
 
         # Check silhouettes coefficients
-        sil_check = Vector{Tuple}()
-        @inbounds for c in clustering_vector
+        sil_check = fill(Vector(undef,4),length(clustering_vector))
+        @inbounds for (i,c) in enumerate(clustering_vector)
             sh = silhouettes(c,dist)
             sh_avg = mean(sh)
             sh_std = std(sh)
-            check_max = Vector{Bool}()
-            check_min = Vector{Bool}()
-            @simd for i in unique(c.assignments)
-                idx = findall(x -> x == i,c.assignments)
+            check_max = true
+            check_min = true
+            @inbounds for i in unique(c.assignments)
+                idx = c.assignments .== i
                 # Check all clusters have the max coefficient more than whole 
                 # average
-                push!(check_max,maximum(sh[idx]) > sh_avg)
+                check_max = check_max ? 
+                    maximum(sh[idx]) <= sh_avg ? false : true : 
+                    false
                 # Check all clusters have no coefficient less than zero
-                push!(check_min,minimum(sh[idx]) < 0)
+                check_min = check_min ? 
+                    minimum(sh[idx]) >= 0 ? false : true : 
+                    false
+                if !check_min && !check_max 
+                    break
+                end
             end
-            check_max = all(check_max)
-            check_min = all(check_min)
-            push!(sil_check,(sh_avg,sh_std,check_max,check_min))
+            sil_check[i] = Vector(undef,4)
+            sil_check[i][1] = sh_avg
+            sil_check[i][2] = sh_std
+            sil_check[i][3] = check_max
+            sil_check[i][4] = check_min
         end
         # Order and find the best K
         idx = findall(x -> all(x[3:4]),sil_check)
@@ -216,6 +231,20 @@ function KClustering!(obj::WsObj;
     # Output
     obj.obs[!,"clusters_" * dist_method * "_" * string(K)] = cell_assignments
     obj.obs.clusters_latest = cell_assignments
+end
+
+@inline function res_detect!(i::Integer,
+        j::Integer,
+        clustering_vector::Vector,
+        slice_number::Base.RefValue)
+    idx = clustering_vector[i - 1][2] .== j
+    counter = StatsBase.counts(clustering_vector[i][2][idx])
+    percentage = [ i / sum(counter) for i in counter ]
+    # # Frankly, I think the commited condition is reasonable!
+    # if isnothing(findfirst(x -> x > 0.99,percentage))
+    if !isnothing(findfirst(x -> x > 0.1,percentage))
+        slice_number[] += 1
+    end
 end
 
 function ModularityClustering!(obj::WsObj;
@@ -271,11 +300,13 @@ function ModularityClustering!(obj::WsObj;
         # Adjacent matrix, but slower!
         # Clustering result may be better!
         g = SimpleWeightedGraph(size(d,1))
-        @inbounds for v in vertices(g)
-            @simd for k in 1:K
-                add_edge!(g,v,res[v][k],1)
-            end
-        end
+        # for v in vertices(g)
+        #     for k in 1:K
+        #         # add_edge!(g,v,res[v][k],1)
+        #         g.weights[v,res[v][k]] = 1
+        #     end
+        # end
+        map(v -> map(k -> add_edge!(g,v,res[v][k],1),1:K),vertices(g))
         m = g.weights
     elseif network == "SNN"
         m = SNN(hcat(res...)',prune)
@@ -307,7 +338,7 @@ function ModularityClustering!(obj::WsObj;
     else
         clustering_vector = Tuple{Float32,Vector{Int}}[]
         slice_time = 0
-        @inbounds for i in eachindex(resolution)
+        @inbounds @fastmath for i in eachindex(resolution)
             push!(clustering_vector,
                   (resolution[i],
                    ModClustering(m;
@@ -320,18 +351,23 @@ function ModularityClustering!(obj::WsObj;
             if i == 1
                 continue
             end
-            slice_number = 0
-            @simd for j in unique(clustering_vector[i - 1][2])
-                idx = findall(x -> x == j,clustering_vector[i - 1][2])
-                counter = StatsBase.counts(clustering_vector[i][2][idx])
-                percentage = [ i / sum(counter) for i in counter ]
-                # # Frankly, I think the commited condition is reasonable!
-                # if isnothing(findfirst(x -> x > 0.99,percentage))
-                if !isnothing(findfirst(x -> x > 0.1,percentage))
-                    slice_number += 1
-                end
-            end
-            if slice_number >= 2 && 
+            slice_number = Ref(0)
+            # Automatically detect the resolution, so can NOT use @tturbo
+            # @inbounds @fastmath @simd for j in 
+            #         unique(clustering_vector[i - 1][2])
+            #     idx = clustering_vector[i - 1][2] .== j
+            #     counter = StatsBase.counts(clustering_vector[i][2][idx])
+            #     percentage = [ i / sum(counter) for i in counter ]
+            #     # # Frankly, I think the commited condition is reasonable!
+            #     # if isnothing(findfirst(x -> x > 0.99,percentage))
+            #     if !isnothing(findfirst(x -> x > 0.1,percentage))
+            #         slice_number[] += 1
+            #     end
+            # end
+            map(j -> res_detect!(i,j,clustering_vector,slice_number),
+                unique(clustering_vector[i - 1][2]))
+
+            if slice_number[] >= 2 && 
                 length(unique(clustering_vector[i][2])) == 
                     length(unique(clustering_vector[i - 1][2]))
                 slice_time += 1
@@ -356,13 +392,13 @@ end
 function SortAssignments!(ca::AbstractVector)
     x = Int[]
     m = countmap(ca)
-    for i in 2:length(m)
+    @inbounds @fastmath @simd for _ in 2:length(m)
         mm = findmax(m)[2]
         push!(x,mm)
         pop!(m,mm)
     end
     idx = [ ca .== v for v in x ]
-    for (i,id) in enumerate(idx)
+    @inbounds for (i,id) in enumerate(idx)
         ca[id] .= i
     end
 end

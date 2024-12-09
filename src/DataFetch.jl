@@ -34,11 +34,9 @@ function Read10X(Path::AbstractString;
                     @info "There are some duplicated gene names!" * 
                         " Add '.numbers' automatically!"
                     for d in dup
-                        for (i,p) in enumerate(findall(x -> x == d,
-                                                       obj.var.name))
-                            obj.var.name[p] = obj.var.name[p] * 
-                                (i > 1 ? ".$(i - 1)" : "")
-                        end
+                        map(x -> obj.var.name[x[2]] = obj.var.name[x[2]] * 
+                               (x[1] > 1 ? ".$(x[1] - 1)" : ""),
+                            enumerate(findall(x -> x == d,obj.var.name)))
                     end
                 end
 
@@ -97,15 +95,74 @@ function Read10X(Path::AbstractString;
             @info "There are some duplicated gene names!" * 
                 " Add '.numbers' automatically!"
             for d in dup
-                for (i,p) in enumerate(findall(x -> x == d,obj.var.name))
-                    obj.var.name[p] = obj.var.name[p] * 
-                        (i > 1 ? ".$(i - 1)" : "")
-                end
+                map(x -> obj.var.name[x[2]] = obj.var.name[x[2]] * 
+                       (x[1] > 1 ? ".$(x[1] - 1)" : ""),
+                    enumerate(findall(x -> x == d,obj.var.name)))
             end
         end
 
         return obj
     end
+end
+
+
+"""
+    ReadUMI(dat,barcodes,features)
+
+Read a UMI matrix, barcodes vector and features (gene names) vector to 
+generate the WsObj.
+
+# Arguments
+- `dat::Union{AbstractMatrix,AbstractSparseMatrix}`: the umi/count matrix. Each 
+  row is a feature and each column is a barcode.
+- `barcodes::Vector{<: AbstractString}`: a string vector of barcodes for each 
+  column.
+- `features::Vector{<: AbstractString}`: a string vector of gene names for each 
+  row.
+
+# Keyword Arguments
+- `min_features::Union{Nothing,Integer} = nothing`: drop cells containing 
+  features less than this number.
+- `min_cells::Union{Nothing,Integer} = nothing`: drop features containing 
+  cells less than this number.
+"""
+function ReadUMI(dat::Union{AbstractMatrix,AbstractSparseMatrix},
+        barcodes::Vector{<: AbstractString},
+        features::Vector{<: AbstractString};
+        min_features::Union{Nothing,Integer} = nothing,
+        min_cells::Union{Nothing,Integer} = nothing)
+
+    if !(typeof(dat) <: AbstractSparseMatrix)
+        dat = sparse(dat)
+    end
+    shape = (dat.m,dat.n)
+    @assert length(barcodes) == shape[1]
+    @assert length(features) == shape[2]
+
+    features = DataFrame("name" => features)
+
+    # Basic calculation
+    @info "Gathering basic information"
+    cell_counts = dat' * ones(Int64,shape[1])
+    cell_features = [ dat.colptr[col + 1] - dat.colptr[col] for col in 1:dat.n ]
+    dat = dat' |> sparse
+    features.feature_cells = [ dat.colptr[col + 1] - dat.colptr[col] 
+                              for col in 1:dat.n ]
+    not_zero = features.feature_cells .!= 0
+    features = features[not_zero,:]
+    obj = WsObj(Dict("raw_dat" => dat[:,not_zero]' |> sparse),
+                DataFrame("barcodes" => barcodes,
+                          "cell_counts" => cell_counts,
+                          "cell_features" => cell_features),
+                features,
+                String[],
+                nothing)
+
+    if !(isnothing(min_features) && isnothing(min_cells))
+        SimpleFilter!(obj,min_features,min_cells)
+    end
+
+    return obj
 end
 
 function SimpleFilter!(obj::WsObj,
